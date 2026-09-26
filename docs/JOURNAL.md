@@ -101,3 +101,81 @@ Kill a process:
 ## Next step
 
 - Data persistence with SQLite + SQLAlchemy.
+
+
+
+---
+
+## Session 3 — Persistent data with SQLite + SQLAlchemy
+
+**Goal:** replace in-memory data with a real database, keeping the door open
+to swap SQLite for PostgreSQL later without rewriting business code.
+
+**Backend restructure:**
+
+    backend/
+    ├── app/
+    │   ├── __init__.py      # marks "app" as a Python package
+    │   ├── main.py          # FastAPI entry point + endpoints
+    │   ├── database.py      # SQLAlchemy engine, session, Base, get_db()
+    │   ├── models.py        # ORM models (Asset)
+    │   └── schemas.py       # Pydantic schemas (AssetCreate, AssetRead)
+    ├── lab.db               # SQLite file (gitignored)
+    └── .venv/
+
+**Design decisions:**
+
+- **SQLAlchemy 2.0 syntax** (`Mapped[...]` + `mapped_column(...)`) instead of
+  the legacy `Column(...)` style — this is what modern tutorials and docs use.
+- **Separate `models.py` and `schemas.py`.** Models describe the *database*;
+  schemas describe the *API contract*. Mixing them causes information
+  disclosure (sensitive DB fields leaking through JSON responses).
+- **`lifespan` context manager** instead of the deprecated `@app.on_event`.
+  On startup it calls `Base.metadata.create_all(bind=engine)`.
+- **`Depends(get_db)`** for session injection — each request opens a session
+  and closes it in a `finally` block, even on exceptions.
+- **`created_at` uses `lambda: datetime.now(timezone.utc)`** and not the
+  bare function reference, otherwise all rows would share the same timestamp
+  (Python evaluates the default only once).
+- **Uvicorn command changed** from `main:app` to `app.main:app` because
+  `main.py` moved into the `app/` package.
+- **`db.refresh(asset)` after `commit()`** to fetch the DB-generated values
+  (`id`, `created_at`) before returning the object — otherwise they would be
+  missing from the response.
+
+**Endpoints added:**
+
+- `GET /api/assets` → returns the full list of assets, ordered by id.
+- `POST /api/assets` → creates a new asset; returns `201 Created` with the
+  row as it was stored.
+
+**Automatic validation (Pydantic):**
+
+- `hostname` shorter than 1 character → `422 Unprocessable Entity`
+- The request never reaches the endpoint function. Validation happens before.
+
+This is a defense-in-depth pattern: constraints live in one place (the schema)
+and the API rejects invalid input automatically.
+
+**Verification commands:**
+
+    # empty list
+    curl -s http://192.168.1.173:8000/api/assets
+
+    # create
+    curl -s -X POST http://192.168.1.173:8000/api/assets \
+      -H "Content-Type: application/json" \
+      -d '{"hostname":"ubuntu-lab","ip_address":"192.168.1.173","os":"Ubuntu 24.04"}'
+
+    # list again — the new row must be present
+    curl -s http://192.168.1.173:8000/api/assets
+
+    # invalid payload — expect 422
+    curl -s -X POST http://192.168.1.173:8000/api/assets \
+      -H "Content-Type: application/json" \
+      -d '{"hostname":"","ip_address":"10.0.0.1","os":"Kali"}'
+
+**Next step:**
+
+- Connect the Vue frontend to the assets endpoints (list + create form).
+- Then: deployment on Ubuntu with systemd/supervisor.
