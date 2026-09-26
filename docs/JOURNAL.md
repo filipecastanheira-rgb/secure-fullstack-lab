@@ -1,103 +1,103 @@
-# Secure Fullstack Lab — Diário de Desenvolvimento
+# Secure Fullstack Lab — Development Journal
 
-Registo cronológico das decisões, comandos e problemas encontrados ao longo do projeto.
-Serve para: (1) documentar para o portefólio, (2) recuperar contexto, (3) aprender com os erros.
+Chronological log of decisions, commands and issues found throughout the project.
+Purpose: (1) document for portfolio, (2) restore context, (3) learn from mistakes.
 
 ---
 
-## Arquitetura atual
+## Current architecture
 
-    Frontend (Vue + Vite)   →   Backend (FastAPI)   →   [em breve: SQLite]
+    Frontend (Vue + Vite)   →   Backend (FastAPI)   →   [soon: SQLite]
     http://192.168.1.173:5173     http://192.168.1.173:8000
 
-Máquinas:
-- Ubuntu (VMware) — 192.168.1.173 — hospeda o projeto
-- Kali (VMware) — 192.168.1.125 — cliente / browser / testes
+Machines:
+- Ubuntu (VMware) — 192.168.1.173 — hosts the project
+- Kali (VMware) — 192.168.1.125 — client / browser / testing
 
 ---
 
-## Sessão 1 — Arranque do frontend e backend
+## Session 1 — Bootstrapping frontend and backend
 
-**Objetivo:** ter Vue e FastAPI a correr, acessíveis a partir do Kali.
+**Goal:** have Vue and FastAPI running and reachable from Kali.
 
-- Backend FastAPI a responder em `/` com `{"message": "Secure Fullstack Lab API is running"}`.
-- Frontend Vue a correr com `npm run dev -- --host 0.0.0.0`.
-- `App.vue` inicial mostrava apenas "You did it!" (template do Vite).
+- FastAPI backend responding at `/` with `{"message": "Secure Fullstack Lab API is running"}`.
+- Vue frontend running with `npm run dev -- --host 0.0.0.0`.
+- Initial `App.vue` only displayed "You did it!" (Vite template).
 
-**Problema 1:** Firefox no Kali não conseguia abrir `http://192.168.1.173:5173`.
-**Diagnóstico (por camadas):**
-1. `ss -ltnp | grep 5173` no Ubuntu → Vite a escutar em `0.0.0.0:5173` (OK).
-2. `curl` no Ubuntu → `HTTP/1.1 200 OK` (OK).
-3. `ping` do Kali → responde (rede OK).
-4. `curl` do Kali → `HTTP/1.1 200 OK` (rede + firewall + Vite OK).
-**Conclusão:** o problema era do lado do browser (cache/refresh). Resolvido com `Ctrl+Shift+R`.
+**Issue 1:** Firefox on Kali could not open `http://192.168.1.173:5173`.
+**Diagnosis (layer by layer):**
+1. `ss -ltnp | grep 5173` on Ubuntu → Vite listening on `0.0.0.0:5173` (OK).
+2. `curl` on Ubuntu → `HTTP/1.1 200 OK` (OK).
+3. `ping` from Kali → replies (network OK).
+4. `curl` from Kali → `HTTP/1.1 200 OK` (network + firewall + Vite OK).
+**Conclusion:** the issue was browser-side (cache/refresh). Fixed with `Ctrl+Shift+R`.
 
-**Lição:** diagnosticar sempre camada a camada — rede → firewall → serviço → browser.
+**Lesson:** always diagnose layer by layer — network → firewall → service → browser.
 
 ---
 
-## Sessão 2 — Ligar Vue ao FastAPI
+## Session 2 — Connecting Vue to FastAPI
 
-**Objetivo:** o Vue faz `fetch` ao FastAPI e mostra a resposta no ecrã.
+**Goal:** Vue performs a `fetch` to FastAPI and displays the response on screen.
 
 **Backend (`backend/main.py`):**
-- Adicionado `CORSMiddleware` com as origens permitidas:
+- Added `CORSMiddleware` with allowed origins:
   - `http://localhost:5173`
   - `http://192.168.1.173:5173`
-- Novo endpoint: `GET /api/hello` → `{"message": "Olá do FastAPI 👋"}`.
+- New endpoint: `GET /api/hello` → `{"message": "Hello from FastAPI 👋"}`.
 
 **Frontend (`frontend/src/App.vue`):**
-- `ref` para o estado reativo (`message`).
-- `onMounted` para disparar o `fetch` quando o componente monta.
+- `ref` for reactive state (`message`).
+- `onMounted` to trigger `fetch` when the component mounts.
 - `await fetch('http://192.168.1.173:8000/api/hello')` + `await res.json()`.
-- `{{ message }}` no template para mostrar a resposta.
+- `{{ message }}` in the template to display the response.
 
-**Problema 2:** erro `NetworkError when attempting to fetch resource` no browser.
-**Causa:** o FastAPI tinha parado entretanto (morreu com o terminal).
-**Diagnóstico:** `curl -H "Origin: http://192.168.1.173:5173" -i ...` mostrava `access-control-allow-origin` quando o servidor estava vivo → CORS estava bem.
-**Solução:** arrancar FastAPI e Vite com `nohup ... &` para sobreviverem ao fecho do terminal.
+**Issue 2:** `NetworkError when attempting to fetch resource` in the browser.
+**Cause:** FastAPI had died in the meantime (killed with the terminal).
+**Diagnosis:** `curl -H "Origin: http://192.168.1.173:5173" -i ...` showed `access-control-allow-origin` while the server was alive → CORS was fine.
+**Solution:** start FastAPI and Vite with `nohup ... &` so they survive the terminal closing.
 
-**Resultado:** Firefox no Kali mostra `Olá do FastAPI 👋` — Vue ↔ FastAPI a funcionar. ✅
+**Result:** Firefox on Kali shows `Hello from FastAPI 👋` — Vue ↔ FastAPI working. ✅
 
 ---
 
-## Comandos úteis usados
+## Useful commands
 
-Arrancar FastAPI em background:
+Start FastAPI in background:
 
     cd ~/secure-fullstack-lab/backend
     source .venv/bin/activate
     nohup uvicorn main:app --host 0.0.0.0 --port 8000 --reload > ~/fastapi.log 2>&1 &
 
-Arrancar Vite em background:
+Start Vite in background:
 
     cd ~/secure-fullstack-lab/frontend
     nohup npm run dev -- --host 0.0.0.0 > ~/vite.log 2>&1 &
 
-Ver logs:
+View logs:
 
     tail -f ~/fastapi.log
     tail -f ~/vite.log
 
-Ver quem ocupa uma porta:
+Check what is using a port:
 
-    sudo ss -ltnp | grep <porta>
+    sudo ss -ltnp | grep <port>
 
-Matar processo:
+Kill a process:
 
     kill <PID>
 
 ---
 
-## Decisões de arquitetura
+## Architecture decisions
 
-- **CORS explícito** (sem `"*"`), porque vamos usar credenciais mais tarde.
-- **Prefixos `/api`** nos endpoints, para separar API de páginas.
-- **SQLite primeiro, PostgreSQL depois** — o código será escrito com SQLAlchemy para que a migração seja só trocar a connection string.
-- **`nohup` em desenvolvimento** — solução provisória; em produção usaremos systemd/supervisor.
+- **Explicit CORS** (no `"*"`), because we will use credentials later.
+- **`/api` prefixes** on endpoints, to separate API from pages.
+- **SQLite first, PostgreSQL later** — code will be written with SQLAlchemy so migration is just swapping the connection string.
+- **`nohup` in development** — temporary solution; in production we will use systemd/supervisor.
 
 ---
 
-## Próximo passo
+## Next step
 
-- Persistência de dados com SQLite + SQLAlchemy.
+- Data persistence with SQLite + SQLAlchemy.

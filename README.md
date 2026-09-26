@@ -1,39 +1,39 @@
 # Secure Fullstack Lab
 
-Aplicação full-stack construída como laboratório prático de desenvolvimento, deployment e segurança (DevSecOps).
+Full-stack application built as a hands-on lab for development, deployment and security (DevSecOps).
 
-## Objetivo
+## Goal
 
-Construir uma aplicação web completa — frontend, backend, base de dados — e endurecê-la ao longo do caminho com práticas reais de segurança, automação e observabilidade, **sem recorrer a cloud paga**.
+Build a complete web application — frontend, backend, database — and harden it along the way with real security, automation and observability practices, **without relying on paid cloud services**.
 
 ## Stack
 
-| Camada       | Tecnologia         | Estado        |
-|--------------|--------------------|---------------|
-| Frontend     | Vue 3 + Vite       | ✅ funcional  |
-| Backend      | FastAPI (Python)   | ✅ funcional  |
-| Base de dados| SQLite → PostgreSQL| ⏳ próximo    |
-| Reverse proxy| Nginx              | ⏳ planeado   |
-| HTTPS        | Let's Encrypt      | ⏳ planeado   |
-| CI/CD        | GitHub Actions     | ⏳ planeado   |
-| Segurança    | Bandit, SCA, ZAP   | ⏳ planeado   |
+| Layer          | Technology          | Status        |
+|----------------|---------------------|---------------|
+| Frontend       | Vue 3 + Vite        | ✅ working    |
+| Backend        | FastAPI (Python)    | ✅ working    |
+| Database       | SQLite → PostgreSQL | ⏳ next       |
+| Reverse proxy  | Nginx               | ⏳ planned    |
+| HTTPS          | Let's Encrypt       | ⏳ planned    |
+| CI/CD          | GitHub Actions      | ⏳ planned    |
+| Security       | Bandit, SCA, ZAP    | ⏳ planned    |
 
-## Arquitetura (estado atual)
+## Architecture (current state)
 
-    Kali (cliente)          Ubuntu (servidor)
-    ─────────────           ─────────────────
-    Browser  ─── HTTP ──▶   Vue (Vite)  :5173
-                              │
-                              │ fetch /api/*
-                              ▼
-                            FastAPI     :8000
+    Kali (client)              Ubuntu (server)
+    ─────────────              ────────────────
+    Browser  ─── HTTP ──▶      Vue (Vite)  :5173
+                                  │
+                                  │ fetch /api/*
+                                  ▼
+                                FastAPI     :8000
 
-## Ambiente
+## Environment
 
-- **Ubuntu (VMware)** — `192.168.1.173` — hospeda backend, frontend e, futuramente, BD e Nginx.
-- **Kali (VMware)** — `192.168.1.125` — cliente, browser, testes de segurança.
+- **Ubuntu (VMware)** — `192.168.1.173` — hosts backend, frontend and, in the future, database and Nginx.
+- **Kali (VMware)** — `192.168.1.125` — client, browser, security testing.
 
-## Como arrancar (desenvolvimento)
+## Running locally (development)
 
 ### Backend
 
@@ -46,32 +46,32 @@ Construir uma aplicação web completa — frontend, backend, base de dados — 
     cd frontend
     npm run dev -- --host 0.0.0.0
 
-Depois abrir em qualquer máquina da LAN:
+Then open from any machine on the LAN:
 
     http://192.168.1.173:5173
 
-## Documentação
+## Documentation
 
-- [`docs/JOURNAL.md`](docs/JOURNAL.md) — diário de desenvolvimento (decisões, problemas, soluções).
+- [`docs/JOURNAL.md`](docs/JOURNAL.md) — development journal (decisions, issues, solutions).
 
 ## Roadmap
 
-- [x] Frontend Vue funcional
-- [x] Backend FastAPI funcional
+- [x] Vue frontend working
+- [x] FastAPI backend working
 - [x] Vue ↔ FastAPI (HTTP + JSON)
-- [ ] Dados persistentes (SQLite → PostgreSQL)
-- [ ] Deployment no Ubuntu (systemd/supervisor)
-- [ ] Nginx como reverse proxy
+- [ ] Persistent data (SQLite → PostgreSQL)
+- [ ] Deployment on Ubuntu (systemd/supervisor)
+- [ ] Nginx as reverse proxy
 - [ ] HTTPS
-- [ ] Hardening SSH / UFW / Fail2Ban
-- [ ] CI/CD com GitHub Actions
+- [ ] SSH hardening / UFW / Fail2Ban
+- [ ] CI/CD with GitHub Actions
 - [ ] SAST (Bandit)
-- [ ] SCA (dependências)
+- [ ] SCA (dependencies)
 - [ ] DAST (OWASP ZAP)
-- [ ] Logging e monitoring
+- [ ] Logging and monitoring
 - [ ] Backups
-- [ ] Documentação final e security review
+- [ ] Final documentation and security review
 
-## Licença
+## License
 
-Projeto pessoal de aprendizagem.
+Personal learning project.

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 
-const message = ref('A carregar...')
+const message = ref('Loading...')
 
 onMounted(async () => {
   try {
@@ -9,14 +9,14 @@ onMounted(async () => {
     const data = await res.json()
     message.value = data.message
   } catch (err) {
-    message.value = 'Erro ao contactar a API: ' + err.message
+    message.value = 'Error contacting the API: ' + err.message
   }
 })
 </script>
 
 <template>
   <h1>Secure Fullstack Lab</h1>
-  <p>Resposta do FastAPI:</p>
+  <p>FastAPI response:</p>
   <p><strong>{{ message }}</strong></p>
 </template>
 
