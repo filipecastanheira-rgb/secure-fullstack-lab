@@ -179,3 +179,108 @@ and the API rejects invalid input automatically.
 
 - Connect the Vue frontend to the assets endpoints (list + create form).
 - Then: deployment on Ubuntu with systemd/supervisor.
+
+
+---
+
+## Session 4 — Frontend ↔ Assets API + network safety decision
+
+**Goal:** give the user a real interface to interact with the assets API —
+list existing assets and create new ones — without refreshing the page.
+
+**Frontend structure (new components):**
+
+    frontend/src/
+    ├── App.vue                    # orchestrator: state + data fetching
+    ├── config.js                  # central API endpoints (new)
+    └── components/
+        ├── AssetList.vue          # table of assets (presentational)
+        └── AssetForm.vue          # form to create assets
+
+**Component communication:**
+
+    App.vue  ──── props (assets) ─────▶  AssetList.vue
+       ▲
+       │
+       └──── event (created) ─────────  AssetForm.vue
+
+- **props** flow parent → child (data).
+- **emits** flow child → parent (events).
+- `<script setup>` makes imported components available in the template
+  without explicit registration.
+
+**Vue concepts used:**
+
+- `ref()` for reactive state (arrays, strings, booleans).
+- `onMounted()` to run a function when the component appears — used to load
+  the initial asset list.
+- `v-model` for two-way binding on form inputs.
+- `v-for` + `:key` to render the table rows.
+- `v-if` / `v-else-if` / `v-else` to handle three UI states: loading, error,
+  success.
+- `defineProps` / `defineEmits` macros for component contracts.
+- `@submit.prevent` to stop the browser's default form submit (which would
+  reload the whole page and break the SPA).
+- `:disabled="loading"` to prevent double-submits while a request is in flight.
+- `:assets="assets"` — the colon means the value is a JavaScript expression,
+  not a literal string.
+
+**Centralized configuration (`frontend/src/config.js`):**
+
+Before this session, the backend URL `http://192.168.1.173:8000` was hardcoded
+in two places. Now it lives in one file:
+
+    export const API_BASE_URL = 'http://192.168.1.173:8000'
+    export const API_ENDPOINTS = {
+      assets: `${API_BASE_URL}/api/assets`,
+      hello:  `${API_BASE_URL}/api/hello`,
+    }
+
+Same idea on the backend: `ALLOWED_ORIGINS` is now a single constant at the
+top of `app/main.py`, referenced by the CORS middleware.
+
+**Why this matters:** the lab will eventually be re-provisioned on a
+Host-only network with different IPs. Centralizing the base URL means only
+one line changes when the network changes.
+
+**Network safety decision (IMPORTANT):**
+
+Both VMs currently run in VMware **Bridged** mode, meaning they can reach
+each other AND the home network / Internet through the same router that the
+host uses. This is convenient during development (apt, pip, npm, git push)
+but is **not safe** for offensive-security testing.
+
+**Commitment, until the lab is properly isolated:**
+
+- Only non-offensive commands are run from the Kali VM:
+  `curl`, `ping`, `apt`, `npm`, `git`, `nmap` **only against `127.0.0.1`
+  or against our own IPs** (`192.168.1.173`, `192.168.1.125`).
+- No subnet scans, brute-force, exploits, or sniffing.
+- The home network must never see traffic that looks like an attack.
+
+**Planned fix (Session 5 or later):** migrate the lab to a VMware
+**Host-only** network with two network adapters per VM:
+
+    eth0  — Host-only (VMnet1) — lab traffic (isolated)
+    eth1  — NAT                — Internet, only when needed
+
+This will be a milestone for the portfolio, and will be documented in the
+hardening section.
+
+**Verification commands:**
+
+    # List assets from the terminal (should match what the browser shows)
+    curl -s http://192.168.1.173:8000/api/assets
+
+    # Create an asset via curl
+    curl -s -X POST http://192.168.1.173:8000/api/assets \
+      -H "Content-Type: application/json" \
+      -d '{"hostname":"kali-attacker","ip_address":"192.168.1.125","os":"Kali Linux"}'
+
+**Result:** Vue shows the asset table updated live after each form submit —
+no manual refresh needed. Full-stack round-trip confirmed. ✅
+
+**Next step:**
+
+- Migrate the lab to an isolated Host-only network (security).
+- Then: deployment on Ubuntu with systemd/supervisor.
