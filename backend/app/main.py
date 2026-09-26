@@ -18,6 +18,14 @@ from app import models
 from app.database import Base, engine, get_db
 from app.schemas import AssetCreate, AssetRead
 
+# Origins allowed to call this API.
+# Keep this in sync with the frontend's host — when the lab network changes,
+# update here (and only here).
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://192.168.1.173:5173",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,10 +47,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://192.168.1.173:5173",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
