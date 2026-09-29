@@ -3,28 +3,24 @@ Entry point for the Secure Fullstack Lab API.
 
 Responsible only for:
 - creating the FastAPI app
-- configuring CORS
 - creating database tables on startup
 - defining HTTP endpoints
+
+Note: CORS middleware was removed after Nginx was introduced as a reverse
+proxy. The browser and the API are now served from the same origin, so
+cross-origin requests no longer occur. If the architecture changes and the
+frontend is served from a different host/port again, CORS will need to be
+reintroduced with an explicit origin allowlist.
 """
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, status
 from sqlalchemy.orm import Session
 
 from app import models
 from app.database import Base, engine, get_db
 from app.schemas import AssetCreate, AssetRead
-
-# Origins allowed to call this API.
-# Keep this in sync with the frontend's host — when the lab network changes,
-# update here (and only here).
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://192.168.1.173:5173",
-]
 
 
 @asynccontextmanager
@@ -43,14 +39,6 @@ app = FastAPI(
     title="Secure Fullstack Lab API",
     version="0.1.0",
     lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 
