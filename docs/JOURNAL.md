@@ -314,3 +314,88 @@ knows what it needs to know: the URLs and origins declared in
   scans or exploits.
 - Only the isolated lab networks are reachable during those tests.
 - No traffic that resembles an attack leaves the lab under any circumstance.
+
+
+---
+
+## Session 5 — systemd services + repository scope
+
+**Goal:** stop losing the FastAPI and Vite processes whenever a terminal is
+closed. Replace manual `nohup ... &` with proper service management.
+
+**Why systemd, not nohup:**
+
+`nohup` keeps a process alive across terminal sessions, but it does not:
+- restart the process if it crashes,
+- start it at boot,
+- give a single command to start/stop/restart,
+- centralize logs.
+
+systemd does all of the above and is the standard service manager on modern
+Linux. Learning it is a prerequisite for any real deployment.
+
+**Two services created** in `/etc/systemd/system/`:
+
+| Service                          | Runs                          | Port |
+|----------------------------------|-------------------------------|------|
+| `secure-fullstack-api.service`   | FastAPI (uvicorn)             | 8000 |
+| `secure-fullstack-web.service`   | Vue (Vite dev server)         | 5173 |
+
+**Copies kept in the repository** at `deploy/systemd/` so the configuration
+is versioned. The real files still live in `/etc/systemd/system/` — the ones
+in the repo are backups/installers for other machines (see
+`deploy/README.md`).
+
+**Key design decisions in the service files:**
+
+- **`User=filipe` / `Group=filipe`** — the services run as a normal user,
+  never as root. The API only needs a high port and read access to project
+  files; no privilege escalation required.
+- **`WorkingDirectory=`** — set to the backend/frontend folder. Critically,
+  this makes the relative `sqlite:///./lab.db` resolve to the right file.
+- **`ExecStart=` uses absolute paths** — systemd does not expand `~` or
+  environment variables from the user's shell. For the frontend we call
+  `node_modules/.bin/vite` directly instead of `npm run dev`, so systemd
+  tracks a single process instead of two (npm → node → vite).
+- **`Restart=on-failure` + `RestartSec=3`** — the service restarts
+  automatically if it crashes, but stays stopped if we stop it deliberately.
+- **No `--reload` in production** — the service does not auto-reload on code
+  changes. To apply changes: `sudo systemctl restart secure-fullstack-api`.
+  This matches production behaviour and avoids the multi-process reloader.
+
+**Verification — resilience test:**
+
+Killed the API process with `kill -9`. systemd detected the failure and
+restarted the service automatically within ~3 seconds, with a new PID. The
+logs recorded the entire sequence:
+
+    Failed with result 'signal'
+    Scheduled restart job, restart counter is at 1
+    Started secure-fullstack-api.service
+
+**Result:** frontend and backend run as managed services, start on boot, and
+recover automatically. No more "why did it stop again?".
+
+**Scope decision — what this repository contains:**
+
+The repository documents **the application** — code, deployment, hardening.
+It does **not** document the home network. Reasons:
+
+- The lab runs on isolated virtual networks (VMware LAN Segments behind an
+  OPNsense VM router). The home network is never touched by this project.
+- It is not a 24/7 service — it is started when working on it.
+- Personal infrastructure details do not belong in a project repository.
+
+Network-specific details of the lab (VM names, segments, firewall rules) are
+deliberately out of scope. The code only knows what it needs: `config.js` on
+the frontend, `ALLOWED_ORIGINS` in `backend/app/main.py`.
+
+**Operational policy during offensive-security testing (future sessions):**
+the lab's outbound route to the Internet will be disabled while running scans
+or exploits. Nothing that resembles an attack leaves the lab.
+
+**Next step:**
+
+- Nginx as reverse proxy (replace the Vite dev server with a build + static
+  serving; unify the app under a single port).
+- Then: HTTPS in the lab, then hardening (SSH, UFW, Fail2Ban).
