@@ -37,3 +37,27 @@ yarn-error.log*
 # ---------- Sistema operativo ----------
 .DS_Store
 Thumbs.db
+
+
+# ---------- TLS / PKI ----------
+# Certificates and keys MUST never be committed to the repository.
+# Private keys in particular are equivalent to passwords.
+*.key
+*.pem
+*.crt
+*.csr
+*.srl
+*.der
+*.p12
+*.pfx
+
+# The entire CA directory and any local cert storage
+certs/
+pki/
+secrets/
+
+# Never commit environment files with real secrets
+*.env.local
+*.env.production
+
+
