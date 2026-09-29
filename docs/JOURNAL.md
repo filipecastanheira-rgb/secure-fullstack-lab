@@ -399,3 +399,109 @@ or exploits. Nothing that resembles an attack leaves the lab.
 - Nginx as reverse proxy (replace the Vite dev server with a build + static
   serving; unify the app under a single port).
 - Then: HTTPS in the lab, then hardening (SSH, UFW, Fail2Ban).
+
+
+---
+
+## Session 6 — Nginx as reverse proxy
+
+**Goal:** unify the app behind a single port, remove the Vite dev server from
+production, and eliminate CORS as a concern.
+
+**Before:**
+
+    Browser ──▶ :5173  (Vite dev server)
+    Browser ──▶ :8000  (FastAPI)      ← cross-origin → CORS required
+
+**After:**
+
+    Browser ──▶ :80  (Nginx)
+                        │
+                        ├── /          → frontend/dist/  (static)
+                        └── /api/*     → proxy → FastAPI :8000
+                                                    │
+                                                    ▼
+                                                  SQLite
+
+**Steps taken:**
+
+1. Installed Nginx with `apt`. Ubuntu's default package enables it at boot
+   via systemd automatically (`Created symlink .../nginx.service`).
+2. Built the frontend for production with `npm run build`. Output:
+   - `dist/index.html`
+   - `dist/assets/index-<hash>.css`
+   - `dist/assets/index-<hash>.js`
+   The hash in filenames means the browser can cache them forever.
+3. Created the site configuration in
+   `/etc/nginx/sites-available/secure-fullstack`. It:
+   - serves static files from `frontend/dist/`
+   - proxies `/api/*` to `http://127.0.0.1:8000`
+   - falls back to `index.html` for SPA routes (`try_files $uri $uri/ /index.html`)
+   - uses dedicated logs (`secure-fullstack.access.log` and `.error.log`)
+   - sets `X-Real-IP` and `X-Forwarded-For` so the API sees the real client IP
+4. Enabled the site and disabled the default one:
+   - `ln -s /etc/nginx/sites-available/secure-fullstack /etc/nginx/sites-enabled/`
+   - `rm /etc/nginx/sites-enabled/default`
+5. Validated with `nginx -t`, then reloaded (`systemctl reload nginx` — no
+   downtime, unlike `restart`).
+6. Changed `frontend/src/config.js` to use **relative paths**
+   (`API_BASE_URL = ''`) so the frontend always talks to the same origin.
+7. Added a `server.proxy` block to `vite.config.js` for local development
+   (`/api` → `http://127.0.0.1:8000`), so `npm run dev` keeps working.
+8. Removed `CORSMiddleware` from `backend/app/main.py`. Same origin now —
+   CORS is no longer needed. Left a comment explaining the decision and when
+   it would have to come back.
+9. Stopped, disabled, and deleted `secure-fullstack-web.service`. The Vite
+   dev server is no longer run as a service.
+10. Versioned the Nginx config at `deploy/nginx/secure-fullstack`.
+
+**Issue encountered:** Nginx returned `500 Internal Server Error` on first
+try. Error log showed:
+
+    stat() ".../dist/index.html" failed (13: Permission denied)
+
+**Cause:** Ubuntu home directories are mode `drwxr-x---`. Nginx runs as
+`www-data`, which is neither the owner nor in the owner's group — so it
+cannot traverse `/home/filipe/`.
+
+**Fix (temporary):**
+
+    sudo chmod o+x /home/filipe
+
+This grants traverse-only permission (not listing). It works, but is not the
+production-correct approach. In a later hardening session, `dist/` will be
+moved to `/var/www/secure-fullstack/` and this permission will be revoked.
+
+**Issue encountered (second):** after configuring Nginx, the browser showed
+`NetworkError`. The frontend build still contained the old hardcoded URL
+(`http://192.168.1.173:8000`), because it had been built *before* editing
+`config.js`.
+
+**Lesson:** the `dist/` folder is a **build artefact**. Any change to the
+frontend source requires `npm run build` before the browser will see it.
+This is exactly why `dist/` is git-ignored — it is generated, not source.
+
+**Key concepts learned:**
+
+- **Reverse proxy** — Nginx is a single entry point that routes to different
+  backends by path. Same-origin from the browser's perspective.
+- **`proxy_set_header X-Real-IP` / `X-Forwarded-For`** — without these, the
+  API sees every request as coming from `127.0.0.1`. With them, real client
+  IPs are preserved for logs and auditing.
+- **SPA fallback** — `try_files $uri $uri/ /index.html` is required for Vue
+  Router to handle client-side URLs.
+- **`nginx -t` before reload** — always validate config syntax before
+  applying. A bad config with `restart` can take the site down.
+- **Content-hashed assets** — Vite's `index-<hash>.js` filenames enable
+  `expires 1y; immutable`, so repeat visits are instant.
+- **`chmod o+x` on a directory** — grants traverse, not list. Different
+  permission bit meaning than on files.
+
+**Result:** one URL, one port, no CORS, faster frontend, everything managed
+by systemd.
+
+**Next step:**
+
+- HTTPS in the lab environment (self-signed or internal CA, since there is
+  no public domain).
+- Then: hardening (SSH, UFW, Fail2Ban).
