@@ -1,0 +1,49 @@
+# =============================================================================
+# Fail2Ban — Secure Fullstack Lab
+#
+# Local overrides. The packaged jail.conf is never edited (it gets overwritten
+# on upgrades). Everything we change lives here.
+# =============================================================================
+
+[DEFAULT]
+
+# Ban for 1 hour after 5 failed attempts within 10 minutes.
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+
+# Use UFW as the banning backend instead of raw iptables.
+# UFW has its own chains, so direct iptables insertion would have no effect.
+banaction = ufw
+banaction_allports = ufw
+
+destemail = root@localhost
+sender    = fail2ban@localhost
+action    = %(action_)s
+
+
+# =============================================================================
+# SSH
+#
+# We use a custom filter (secure-sshd) instead of the packaged one, because:
+#   1. On OpenSSH 9.x+ (Ubuntu 24.04+), the authentication worker process is
+#      named `sshd-session`, not `sshd`. The default filter restricts to
+#      `_COMM=sshd` and therefore misses our entries entirely.
+#   2. We also want to count `Connection closed by authenticating user ...`
+#      as a failed attempt — otherwise clients that give up before sending
+#      a key go unnoticed.
+# =============================================================================
+
+[sshd]
+enabled  = true
+port     = 22
+filter   = secure-sshd
+logpath  = %(sshd_log)s
+backend  = systemd
+
+
+# Override the packaged journalmatch, which filters by `_COMM=sshd`.
+# On OpenSSH 9.8+ the authentication worker is `sshd-session`, so the
+# packaged filter would miss every entry. Matching on the systemd unit
+# alone captures both the listener and the session worker.
+journalmatch = _SYSTEMD_UNIT=ssh.service

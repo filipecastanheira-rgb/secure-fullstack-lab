@@ -1,0 +1,4 @@
+Adicionadas regras de utilizador (veja 'ufw status' para executar a firewall):
+ufw allow from 192.168.1.125 to any port 22 proto tcp comment 'SSH from Kali'
+ufw allow 80/tcp comment 'HTTP (redirects to HTTPS)'
+ufw allow 443/tcp comment 'HTTPS'
