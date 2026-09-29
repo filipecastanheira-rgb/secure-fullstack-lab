@@ -284,3 +284,33 @@ no manual refresh needed. Full-stack round-trip confirmed. ✅
 
 - Migrate the lab to an isolated Host-only network (security).
 - Then: deployment on Ubuntu with systemd/supervisor.
+
+
+---
+
+## Scope note — what this repository does and does not cover
+
+This repository documents **the Secure Fullstack Lab application** — its code,
+its deployment, its security hardening. It does **not** document the home
+network it runs on.
+
+Reasons:
+
+- The project runs on **isolated virtual networks** inside VMware. The home
+  network is never touched by this application.
+- The lab is **not a 24/7 service** — it is started when working on it, and
+  stopped afterwards.
+- Documenting personal infrastructure here would mix concerns and expose
+  details that do not belong in a project repository.
+
+Anything network-specific to the lab (VM names, internal segments, firewall
+rules) is deliberately **out of scope** for this repository. The code only
+knows what it needs to know: the URLs and origins declared in
+`frontend/src/config.js` and `ALLOWED_ORIGINS` in `backend/app/main.py`.
+
+**Operational policy during offensive-security testing** (future sessions):
+
+- The lab's outbound route to the Internet will be disabled while running
+  scans or exploits.
+- Only the isolated lab networks are reachable during those tests.
+- No traffic that resembles an attack leaves the lab under any circumstance.
