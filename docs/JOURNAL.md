@@ -671,3 +671,157 @@ be revoked.
 - SSH hardening (key-only authentication, disable password login, no root).
 - UFW firewall.
 - Fail2Ban.
+
+
+---
+
+## Session 8 — Server hardening (SSH, UFW, Fail2Ban)
+
+**Goal:** apply the standard server-hardening measures that make a fresh
+Ubuntu VM safe to leave running. Four independent layers, all tested.
+
+### Layer 1 — SSH key-only authentication
+
+Generated an SSH key on the Kali VM (client side):
+
+    ssh-keygen -t ed25519 -C "kali-lab@192.168.1.125"
+
+Copied the public key to the Ubuntu user:
+
+    ssh-copy-id filipe@192.168.1.173
+
+**Order matters here.** Key auth was tested *before* disabling passwords.
+If we had disabled passwords first and the key was wrong, we would have been
+locked out.
+
+SSH hardening lives in a drop-in file:
+
+    /etc/ssh/sshd_config.d/99-hardening.conf
+
+Applied after the main config because of the `99-` prefix. Key settings:
+
+- `PasswordAuthentication no` — passwords disabled
+- `PermitRootLogin no` — root can never log in
+- `AllowUsers filipe` — allowlist; everyone else is rejected before auth
+- `KbdInteractiveAuthentication no` + `ChallengeResponseAuthentication no`
+  — disables alternate interactive auth paths. This is a common gotcha:
+  turning off `PasswordAuthentication` alone is not enough.
+- `MaxAuthTries 3`, `LoginGraceTime 30` — reduce the attack window
+- `AllowTcpForwarding no`, `AllowAgentForwarding no`, `X11Forwarding no`
+  — disable features we do not use
+
+**Validated before applying:**
+
+    sudo sshd -t
+    sudo systemctl restart ssh
+
+**Verified:**
+
+- `ssh filipe@192.168.1.173 hostname` → works, no password prompt
+- `ssh -o PubkeyAuthentication=no filipe@192.168.1.173` →
+  `Permission denied (publickey)` — passwords truly disabled
+
+**Break-glass:** the VMware console always works, regardless of SSH config.
+This was the safety net throughout.
+
+### Layer 2 — UFW firewall
+
+Defaults: `deny incoming`, `allow outgoing`.
+
+Only three rules, and only the first restricts by source:
+
+    sudo ufw allow from 192.168.1.125 to any port 22 proto tcp comment 'SSH from Kali'
+    sudo ufw allow 80/tcp  comment 'HTTP (redirects to HTTPS)'
+    sudo ufw allow 443/tcp comment 'HTTPS'
+
+**Order matters:** the SSH rule was defined *before* `ufw enable`. Without
+that rule in place, enabling the firewall would cut remote access instantly.
+
+**Result:** FastAPI on `:8000` is no longer reachable from the network.
+Verified from Kali:
+
+    nc -zv -w 3 192.168.1.173 8000
+    → Connection timed out
+
+The timeout (rather than "Connection refused") confirms UFW is **dropping**
+packets — the client gets no response at all. That is the intended
+behaviour: an attacker learns nothing.
+
+### Layer 3 — Fail2Ban
+
+Bans IPs that fail SSH authentication repeatedly. Two important details:
+
+**1. UFW as the ban backend.** The default Fail2Ban action uses raw
+`iptables -I INPUT`, but UFW manages its own chains
+(`ufw-user-input`). A raw iptables rule would be inserted *outside* the
+chain UFW actually consults, so it would have no effect. Fix:
+
+    banaction = ufw
+    banaction_allports = ufw
+
+This makes Fail2Ban call `ufw insert 1 deny from <IP>` — visible in
+`ufw status`.
+
+**2. Custom filter needed on OpenSSH 9.x+ (Ubuntu 24.04+).**
+Discovered through debugging that:
+
+- The authentication worker process is now `sshd-session`, **not** `sshd`.
+  The packaged filter restricts to `_COMM=sshd` and misses every entry.
+- Our test attempts produced `Connection closed by authenticating user ...`
+  rather than `Failed password`. The packaged filter does not count that
+  as a failure.
+
+Created a custom filter at `/etc/fail2ban/filter.d/secure-sshd.conf`,
+covering five patterns:
+
+    Failed publickey for ...
+    Failed password for ...
+    Invalid user ...
+    Connection closed by authenticating user ... [preauth]
+    Connection closed by <HOST> port ... [preauth]
+
+Also overrode `journalmatch` to match on `_SYSTEMD_UNIT=ssh.service` only
+(dropping the `+ _COMM=sshd` restriction), so it captures both `sshd` and
+`sshd-session` entries.
+
+**Verified end-to-end:**
+
+1. Generated 6 failed SSH attempts from Kali.
+2. `fail2ban-client status sshd` showed:
+   - `Total failed: 5`
+   - `Currently banned: 1`
+   - `Banned IP list: 192.168.1.125`
+3. Confirmed the UFW rule list contained a temporary DENY for that IP.
+4. Unbanned with `fail2ban-client set sshd unbanip 192.168.1.125`.
+5. Confirmed the temporary rule was removed and the original allow rules
+   remained intact.
+
+### Lessons
+
+- **Order of operations matters.** For both SSH and UFW, testing the new
+  method *before* disabling the old one prevented lockout.
+- **A ban blocks the whole IP, not just the port.** When Fail2Ban banned
+  the Kali IP, all traffic from Kali (including HTTPS) was blocked. Worth
+  knowing before it surprises you in a real environment.
+- **Fail2Ban + UFW need explicit integration.** They do not cooperate by
+  default. `banaction = ufw` is required.
+- **OpenSSH 9.x+ renamed things.** `sshd-session` breaks the packaged
+  Fail2Ban filter silently. `fail2ban-regex systemd-journal <filter>`
+  against real logs is the fastest way to detect this.
+- **`DROP` vs `REJECT`.** UFW's default is to drop packets silently.
+  The client sees a timeout, not a refusal. Slower for legitimate users,
+  but reveals nothing to a scanner.
+
+### Files versioned in the repository
+
+All hardening configs are copied into `deploy/hardening/` with a README
+that explains how to reinstall them on a fresh machine.
+
+**Next step:**
+
+- CI/CD pipeline with GitHub Actions: lint, tests, security scanning
+  (Bandit for SAST, dependency check for SCA).
+- Then: DAST with OWASP ZAP against the running lab.
+- Then: logging and monitoring (GoAccess for Nginx logs, Btop for system).
+- Then: backups.
+- Finally: documentation polish and the "What I Learned" section.
