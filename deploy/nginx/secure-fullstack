@@ -1,17 +1,64 @@
+# =============================================================================
+# HTTP — everything gets redirected to HTTPS.
+# No content is served over plain HTTP anymore.
+# =============================================================================
 server {
     listen 80;
     listen [::]:80;
     server_name 192.168.1.173;
 
-    # Root of the built Vue app
+    # Preserve the path and query string when redirecting.
+    return 301 https://$host$request_uri;
+}
+
+# =============================================================================
+# HTTPS — the real site.
+# =============================================================================
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name 192.168.1.173;
+
+    # --- TLS ---
+    ssl_certificate     /etc/nginx/ssl/secure-fullstack/server.crt;
+    ssl_certificate_key /etc/nginx/ssl/secure-fullstack/server.key;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # --- Security headers ---
+    # HSTS: browsers will only use HTTPS for this host for the next year.
+    # includeSubDomains: covered. preload: omitted (only for public sites).
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Prevent the page from being embedded in an iframe (clickjacking).
+    add_header X-Frame-Options "DENY" always;
+
+    # Stop the browser from guessing the content type — a classic XSS vector.
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Limit what the browser sends in the Referer header to other sites.
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Disable browser features we don't use (geolocation, camera, mic, ...).
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+    # Content Security Policy — what the browser is allowed to load.
+    # 'self' = only from this same origin. No external scripts, no inline.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+
+    # --- Static content ---
     root /home/filipe/secure-fullstack-lab/frontend/dist;
     index index.html;
 
-    # Logging — separate files so this site's traffic is easy to isolate
     access_log /var/log/nginx/secure-fullstack.access.log;
     error_log  /var/log/nginx/secure-fullstack.error.log;
 
-    # --- API: proxy to FastAPI ---
+    # --- API reverse proxy ---
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
@@ -21,16 +68,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # --- Static assets: long cache, content-hashed filenames ---
+    # --- Long-cached immutable assets (content-hashed by Vite) ---
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
     }
 
-    # --- SPA fallback: anything else goes to index.html ---
+    # --- SPA fallback ---
     location / {
         try_files $uri $uri/ /index.html;
     }
 }
-
