@@ -505,3 +505,169 @@ by systemd.
 - HTTPS in the lab environment (self-signed or internal CA, since there is
   no public domain).
 - Then: hardening (SSH, UFW, Fail2Ban).
+
+
+---
+
+## Session 7 — HTTPS with an internal CA
+
+**Goal:** serve the application over HTTPS with a certificate the lab trusts,
+without depending on any public domain or paid CA.
+
+**Why not Let's Encrypt:** Let's Encrypt requires proof of control over a
+public domain (DNS-01 or HTTP-01 challenge). The lab runs on a private IP
+(`192.168.1.173`) inside isolated virtual networks — no public domain, no
+exposure to the internet. Let's Encrypt is not applicable here.
+
+**Solution:** build our own internal Certificate Authority (CA), the same
+approach used inside companies for internal services.
+
+### PKI material created
+
+All material lives **outside the repository**, at `~/pki/secure-fullstack-lab/`:
+
+| File          | Purpose                                 | Secret? |
+|---------------|-----------------------------------------|---------|
+| `ca.key`      | CA private key (RSA 4096)               | YES     |
+| `ca.crt`      | CA public certificate (self-signed, 10y)| no      |
+| `server.key`  | Server private key (RSA 2048)           | YES     |
+| `server.csr`  | Certificate signing request             | no      |
+| `server.crt`  | Server certificate signed by the CA     | no      |
+| `ca.srl`      | Serial counter maintained by OpenSSL    | no      |
+
+The `.gitignore` was updated **before** creating these files, to ensure they
+can never be committed by accident:
+
+    *.key
+    *.pem
+    *.crt
+    *.csr
+    *.srl
+    certs/
+    pki/
+    secrets/
+
+**Rule:** if a file is a secret or a credential, the `.gitignore` must be
+excluding it *before* the file is created.
+
+### Commands used
+
+1. CA private key:
+
+        openssl genrsa -out ca.key 4096
+
+2. CA self-signed certificate (10 years, no passphrase — lab environment):
+
+        openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 \
+          -out ca.crt \
+          -subj "/C=PT/O=Secure Fullstack Lab/CN=Secure Fullstack Lab Root CA"
+
+3. Server private key:
+
+        openssl genrsa -out server.key 2048
+
+4. Certificate signing request, with SAN (the important part):
+
+        openssl req -new -key server.key -out server.csr \
+          -subj "/C=PT/O=Secure Fullstack Lab/CN=192.168.1.173" \
+          -addext "subjectAltName=IP:192.168.1.173,DNS:localhost,IP:127.0.0.1"
+
+5. Sign the CSR with the CA:
+
+        openssl x509 -req -in server.csr \
+          -CA ca.crt -CAkey ca.key -CAcreateserial \
+          -out server.crt -days 825 -sha256 \
+          -copy_extensions copy
+
+### Key concepts
+
+- **CA = notary.** The CA signs certificates for others. Anyone who trusts
+  the CA automatically trusts anything it signs.
+- **A certificate is a public document.** It can be shared freely. Only the
+  matching *private key* is secret.
+- **Self-signed CA.** The CA's certificate is signed by itself — the trust
+  is an act of faith. That is why the user must install the CA manually on
+  each client (as we did on Ubuntu and Kali).
+- **One key per purpose.** The CA has its own key (4096 bit); the server has
+  a different one (2048 bit). If the server key leaks, only that certificate
+  needs to be revoked — the CA stays intact.
+- **SAN, not CN.** Modern browsers ignore the Common Name entirely for host
+  verification. All identities must be listed in `subjectAltName`.
+  Without SAN, the certificate is rejected with `ERR_CERT_COMMON_NAME_INVALID`.
+- **`-copy_extensions copy`** is required in step 5. Without it, the SAN from
+  the CSR is dropped when the certificate is signed, and the browser rejects.
+- **TLS 1.2/1.3 only.** TLS 1.0 and 1.1 have known weaknesses and are
+  deprecated. The config restricts to 1.2 and 1.3.
+
+### Nginx configuration
+
+- **HTTP (port 80)** is now a pure redirect:
+
+        return 301 https://$host$request_uri;
+
+  This preserves the path and query string. Nothing is served over plain
+  HTTP anymore.
+
+- **HTTPS (port 443)** serves the real site. It configures:
+  - certificate + key paths (under `/etc/nginx/ssl/secure-fullstack/`)
+  - `ssl_protocols TLSv1.2 TLSv1.3`
+  - modern session cache settings
+
+### Security headers added
+
+All set with `always` so they also apply to error responses:
+
+| Header                       | Purpose                                          |
+|------------------------------|--------------------------------------------------|
+| `Strict-Transport-Security`  | Force HTTPS for 1 year (browser-level)           |
+| `X-Frame-Options: DENY`      | Prevent clickjacking (no embedding in iframes)   |
+| `X-Content-Type-Options`     | Stop MIME-type sniffing (classic XSS vector)     |
+| `Referrer-Policy`            | Limit Referer header sent to other sites         |
+| `Permissions-Policy`         | Disable unused browser APIs (geo, mic, camera)   |
+| `Content-Security-Policy`    | Restrict what the browser can load — last line   |
+|                              | of defense against XSS                           |
+
+The CSP is `default-src 'self'` across the board, with `object-src 'none'`
+and `frame-ancestors 'none'`. This means: no external scripts, no inline
+scripts, no external fonts, no embedding. It works because Vite outputs
+external `.js` and `.css` files — no inline code.
+
+### Installing the CA on clients
+
+Ubuntu:
+
+    sudo cp ca.crt /usr/local/share/ca-certificates/secure-fullstack-lab-ca.crt
+    sudo update-ca-certificates
+
+Kali: same commands. The file must end in `.crt` — otherwise
+`update-ca-certificates` ignores it.
+
+Firefox uses the system trust store via `p11-kit` on modern Linux
+distributions, so installing the CA at the OS level was enough — no
+separate NSS import required.
+
+### Verification
+
+- `curl -s https://192.168.1.173/` — works without `-k` (system trusts CA)
+- Firefox on Kali: padlock shown, "Verified by: Secure Fullstack Lab",
+  TLS 1.3, no warnings
+- All 6 security headers present in responses
+- HTTP requests get `301 Moved Permanently` with `Location: https://...`
+- Full app works: list assets, create asset, table updates
+
+### Future cleanup (hardening session)
+
+The Nginx certificate files were copied to `/etc/nginx/ssl/secure-fullstack/`
+with `root:root` ownership and `600` on the key. This is correct.
+
+However, Nginx still serves static content from
+`/home/filipe/secure-fullstack-lab/frontend/dist/`. That required granting
+`o+x` on `/home/filipe/` earlier. In the hardening session, the built assets
+will be moved to `/var/www/secure-fullstack/`, and the `o+x` permission will
+be revoked.
+
+**Next step:**
+
+- SSH hardening (key-only authentication, disable password login, no root).
+- UFW firewall.
+- Fail2Ban.
