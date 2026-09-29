@@ -1,0 +1,15 @@
+[Unit]
+Description=Secure Fullstack Lab — Vue frontend (Vite dev server)
+After=network.target
+
+[Service]
+Type=simple
+User=filipe
+Group=filipe
+WorkingDirectory=/home/filipe/secure-fullstack-lab/frontend
+ExecStart=/home/filipe/secure-fullstack-lab/frontend/node_modules/.bin/vite --host 0.0.0.0 --port 5173
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
