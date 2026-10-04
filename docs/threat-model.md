@@ -1226,6 +1226,45 @@ This changes the threat model. Controls that exist on the host (UFW,
 Fail2Ban, file permissions) do not apply here. The only controls available
 are the ones GitHub provides, plus the discipline of the operator.
 
+
+#### 7.8.1 Repository visibility policy
+
+The repository is **private during development** and is only made public when
+the project is complete. This is a deliberate design decision, not a
+convenience.
+
+**What it gives:**
+
+- Time to complete the pre-publication hygiene (full history scan with
+  `gitleaks`, license, security policy, README polish) without pressure.
+- Reduced exposure while the code is still changing: no forks, no scrapers,
+  no half-finished snapshots indexed by search engines.
+- A single, explicit moment when the repository becomes visible — chosen by
+  the operator, not by accident.
+
+**What it does NOT give:**
+
+- It does not make the account invisible. An attacker who compromises the
+  GitHub account (via password, SSH key, or session) can clone the private
+  repository exactly as if it were public. "Private" means "not indexed",
+  not "not accessible".
+- It does not eliminate the impact of pre-publication exposure. An attacker
+  who obtains the code before public release has an information advantage:
+  time to study the architecture and prepare.
+
+**Impact of the policy on the risk model:**
+
+| Repository state | Impact of exposure |
+|------------------|-------------------|
+| Private during development | Low — the code will be public eventually; exposure only grants pre-publication advantage |
+| Public without 2FA / signed commits / branch protection | High — supply chain attack; malicious code published in the operator's name |
+| Public after full treatment | Low — no force-push, signed commits, and detection in place |
+
+**Conclusion:** the private-during-development policy reduces the impact of
+exposure to a manageable level, but does not remove the need for the
+prevention controls planned for Phase 12. The two are complementary.
+
+
 #### S — Spoofing
 
 **S1. Authentication is by SSH key.**
