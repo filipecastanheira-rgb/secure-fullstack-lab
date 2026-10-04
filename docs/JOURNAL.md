@@ -825,3 +825,197 @@ that explains how to reinstall them on a fresh machine.
 - Then: logging and monitoring (GoAccess for Nginx logs, Btop for system).
 - Then: backups.
 - Finally: documentation polish and the "What I Learned" section.
+
+
+---
+
+## Session 9 — Threat model (STRIDE)
+
+**Goal:** produce a threat model of the system as if it were going into
+production, before introducing authentication. The model informs the
+design of every subsequent phase — auth, pipeline, vulnerability exercise,
+GRC documents.
+
+### Method
+
+Chose **STRIDE** (Microsoft) because it maps cleanly to recognised
+frameworks and because each category corresponds to a security property:
+
+| Letter | Threat                | Violates         |
+|--------|-----------------------|------------------|
+| S      | Spoofing              | Authentication   |
+| T      | Tampering             | Integrity        |
+| R      | Repudiation           | Non-repudiation  |
+| I      | Information disclosure| Confidentiality  |
+| D      | Denial of service     | Availability     |
+| E      | Elevation of privilege| Authorisation    |
+
+### Scope principle
+
+Established an explicit principle in §1.2 of the threat model: **the lab
+simulates production**. Isolation, absence of public exposure, and
+temporary lifetime are *not* accepted as reasons to lower the bar. Every
+deferral must have a technical rationale, not an environmental excuse.
+A table of accepted deferrals was added in §1.2.1, each with its specific
+justification.
+
+### Document structure
+
+Created `docs/threat-model.md` with:
+
+1. Scope and assumptions
+2. System description (target state, with status markers)
+3. Data classification (Public / Internal / Confidential / Restricted)
+4. Assets (data, services, access, integrity-critical)
+5. Trust boundaries (six boundaries, B1–B6, with controls per boundary)
+6. Threat actors (T-01 to T-06)
+7. STRIDE analysis
+8. Regulatory obligations (planned)
+9. Risk register (planned)
+10. Open findings and gaps
+11. Revision history
+
+Every control in the document is tagged `[implemented]`, `[planned]`, or
+`[gap]`. The gap list feeds the risk register.
+
+### STRIDE analysis produced
+
+Four components analysed in depth:
+
+**7.1 Nginx** — 12 threats identified. Main gaps:
+- `server_tokens off` not set (version disclosure)
+- No rate limiting at the edge
+- No slowloris mitigations
+
+**7.2 FastAPI** — ~17 threats. Main gaps:
+- No authentication (the biggest)
+- No rate limiting on API endpoints
+- No pagination on collection endpoints
+- Verbose validation errors
+
+Two threats confirmed as already mitigated:
+- Mass assignment — Pydantic ignores undeclared fields
+- SQL injection — SQLAlchemy parameterises by default
+
+**7.4 SQLite** — smaller section by design. SQLite is not a network
+service: it has no identity concept, no privilege model, and its security
+depends entirely on file permissions and the process that opens it. Most
+entries are `[gap]` or `[known limitation]`. This is expected.
+
+**7.6 SSH** — the strongest boundary. Most controls `[implemented]`:
+- Key-only authentication
+- Root login disabled
+- User allowlist
+- LoginGraceTime, MaxAuthTries
+- AllowTcpForwarding no, AllowAgentForwarding no
+- Fail2Ban integrated with UFW
+
+### Findings recorded
+
+Four findings, tagged for the risk register:
+
+| ID  | Finding                                              | Component |
+|-----|------------------------------------------------------|-----------|
+| #1  | FastAPI listens on `0.0.0.0:8000`                    | FastAPI   |
+| #2  | Application runs as the human operator (`filipe`)    | Host      |
+| #3  | No privilege separation (same root cause as #2)      | Host      |
+| #4  | SSH sessions are not recorded                        | SSH       |
+
+Findings #2 and #3 are the same problem described from two angles — will
+be consolidated in the risk register.
+
+### Cross-cutting insight: three levels of authorisation
+
+While discussing IDOR, we identified that "authorisation" is not a single
+control. There are three independent levels, and a system that implements
+only the first is vulnerable to IDOR, and a system that implements only
+the first two leaks sensitive fields:
+
+| Level | Question                                          | Where enforced         |
+|-------|---------------------------------------------------|------------------------|
+| L1    | Can this subject call this endpoint?              | Auth dependency, RBAC  |
+| L2    | Can this subject see this row?                    | Query filter (IDOR)    |
+| L3    | Can this subject see this field of this row?      | Response schema        |
+
+This is why SQLAlchemy models (`models.py`) and Pydantic schemas
+(`schemas.py`) are separate: the schema is the mechanism for L3.
+
+Recorded as §7.3 of the threat model.
+
+### SSH key passphrase applied
+
+As a partial mitigation for threat S4 (key theft), a passphrase was applied
+to the Kali operator's private key:
+
+    ssh-keygen -p -f ~/.ssh/id_ed25519
+
+Verified: SSH now prompts for the passphrase on every new connection, and
+authentication continues to work.
+
+This closes the "key file exfiltrated" scenario but not the "session
+already open" or "passphrase intercepted" scenarios.
+
+### SSH certificates — deferred with rationale
+
+Discussed implementing short-lived SSH certificates (8h–24h) issued by a
+dedicated SSH CA. This is the correct long-term mitigation for S4 and is
+used in large organisations. **Deferred**, for two reasons:
+
+1. It would add a critical key (the SSH CA) to the same account that
+   already holds the TLS CA key and `lab.db` ownership — making the
+   privilege-collapse problem (Finding #3) worse, not better.
+2. It pairs naturally with Ansible (Phase 9), where certificate issuance
+   and rotation can be automated.
+
+Recorded in §1.2.1 as an accepted deferral with a technical rationale.
+
+### Concepts learned
+
+- **Authentication vs authorisation** — different questions, different
+  layers, different failures.
+- **JWT** — a signed token; the signature is the only thing preventing
+  payload tampering. `alg: none` and weak keys are the two most common
+  failure modes.
+- **IDOR** — a valid, well-formed request that returns another user's
+  data. The most common authorisation bug in web applications.
+- **Mass assignment** — a server that trusts the client to send only
+  expected fields. Prevented by strict schemas.
+- **RBAC** — roles, not individual permissions, assigned to users.
+- **Rate limiting** — the difference between "server can handle load" and
+  "server survives abuse".
+- **Defense in depth in concrete terms** — UFW filters by origin;
+  Fail2Ban filters by behaviour. Independent controls, covering different
+  failure modes.
+- **DROP vs REJECT** — UFW drops silently. The client sees a timeout, not
+  a refusal. Fewer signals for a scanner, more time for the operator.
+
+### Lessons
+
+- **A threat model is a working document, not a checkbox.** Most entries
+  produced an actionable follow-up item. The document drove the next phase
+  rather than describing what was already done.
+- **"Not applicable" is a valid result.** SQLite has no spoofing risk
+  because it has no identity concept. Recording why something does *not*
+  apply is as valuable as recording what does.
+- **Deferrals must have a technical rationale.** "It's just a lab" is not
+  one. "It depends on Finding #3 being fixed first" is.
+- **Tools integrate badly by default.** The Fail2Ban/UFW interaction was
+  the first example; the SSH CA and privilege separation is the second.
+  Integration is a design task.
+- **Passphrase on a key is not a session control.** It protects the file
+  at rest, not the session. Understanding *what* a control protects is
+  more important than knowing it exists.
+
+### Files changed
+
+- `docs/threat-model.md` — created (1088 lines)
+- Kali SSH key — passphrase applied
+
+**Next step:**
+
+- Complete STRIDE analysis for remaining components: **PKI**, **GitHub**.
+- Then produce the **risk register** (`docs/risk-register.md`) with
+  likelihood, impact, severity, treatment, and residual risk for every
+  finding.
+- Then **Statement of Applicability** and **control mapping**.
+- Then proceed to Phase 4 (authentication).
