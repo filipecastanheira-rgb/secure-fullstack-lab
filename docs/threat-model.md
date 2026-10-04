@@ -1086,3 +1086,263 @@ authentication is complete.
 because it depends on an attacker already having SSH access, which
 requires the private key. It is recorded for completeness and to inform
 the design of the detection phase.
+
+
+---
+
+### 7.7 PKI (internal Certificate Authority)
+
+**Note on the nature of the CA.** The CA is not a running service. It is
+the pair (`ca.key`, `ca.crt`) that signs every certificate this lab
+issues. It exists only when we run `openssl` to sign something. Its value
+is entirely in *what can be signed with it*.
+
+#### S — Spoofing
+
+**S1. Any certificate signed by the CA is trusted.**
+A client that trusts `ca.crt` trusts every certificate signed by `ca.key`,
+without further verification. This is by design: trust propagates from the
+CA to everything it issues.
+*Scenario:* if an attacker has `ca.key`, they can sign a certificate for
+any hostname or IP address that any trusting client will accept.
+*Status:* `[implemented]` — this is the correct PKI model. The threat is
+not the propagation, it is the compromise of the CA key.
+
+**S2. No revocation mechanism.**
+If `server.crt` is compromised, there is no way to tell clients to stop
+trusting it. CRL and OCSP are not configured.
+*Scenario:* a stolen `server.key` can be used for MITM for as long as the
+certificate remains valid (825 days).
+*Status:* `[gap]` — for a lab, acceptable. In production, OCSP or short
+certificate lifetimes are required.
+
+#### T — Tampering
+
+**T1. The `ca.key` file can be modified or replaced.**
+An attacker with write access to `~/pki/` can substitute a different key.
+The new key would then be used for all future issuances, silently.
+*Status:* `[gap]` — file integrity monitoring (`auditd` watch on `~/pki/`).
+
+**T2. The `ca.crt` distributed to clients could be replaced.**
+If the CA certificate installed on Kali is replaced with a different one,
+any certificate signed by the *new* CA is trusted instead.
+*Scenario:* requires access to the Kali VM (boundary B5).
+*Status:* `[gap]` — detection would require comparing fingerprints manually.
+
+#### R — Repudiation
+
+**R1. Issued certificates are not logged.**
+No record exists of which certificates have been issued, with what subject,
+SAN, or validity period. `ca.srl` holds the last serial number but nothing
+else.
+*Status:* `[gap]` — for a lab with two certificates, negligible. In a real
+PKI, a log of issuances is standard.
+
+#### I — Information disclosure
+
+**I1. `ca.key` is readable by `filipe`.**
+The CA private key is stored unencrypted (generated with `-nodes`) in
+`~/pki/`. Any process running as `filipe` can read it.
+*Scenario:* a compromised process running as `filipe` exfiltrates the key
+and can then forge any certificate.
+*Status:* `[gap]` — this is the **single most critical asset in the lab**.
+Mitigations: (a) encrypt the key with a passphrase; (b) store it offline
+when not in use; (c) move it to a separate account or a dedicated CA host.
+
+**I2. `ca.key` is present on the running server.**
+The CA key lives on the same machine that serves the application.
+Best practice is to keep the CA offline — used only to sign, never present
+on a production host.
+*Status:* `[gap]` — accepted for the lab. Documented here so the
+deviation is intentional and visible.
+
+#### D — Denial of service
+
+**D1. Loss of `ca.key` invalidates the entire trust chain.**
+If the CA key is lost, no new certificates can be issued, and there is no
+way to re-sign existing ones. The entire PKI must be rebuilt.
+*Scenario:* accidental deletion, failed backup, disk corruption.
+*Status:* `[gap]` — backup of `~/pki/` is planned for Phase 10.
+
+**D2. Loss of `ca.crt` on clients.**
+If the CA certificate is removed from a client's trust store, every
+certificate issued by that CA is rejected.
+*Status:* `[gap]` — same remediation as D1.
+
+#### E — Elevation of privilege
+
+**E1. `ca.key` compromise = arbitrary trust.**
+An attacker with the CA private key can issue a valid certificate for
+**any** identity. They can impersonate the application, the host, or any
+other service that trusts this CA.
+*Scenario:* attacker issues a certificate for `192.168.1.173` with a
+stolen private key, redirects traffic, and the client trusts the
+certificate silently.
+*Status:* `[gap]` — the only mitigations are: keep the key safe, encrypt
+it, and never put it on a host that serves untrusted content.
+
+---
+
+#### 7.7.1 Why CA compromise is qualitatively worse than server key compromise
+
+This is a distinction worth making explicit. The two keys are not
+equivalent:
+
+| If the attacker has...   | They can...                                              |
+|--------------------------|----------------------------------------------------------|
+| `server.key`             | Impersonate *this one server* to clients                 |
+| `ca.key`                 | Issue a valid certificate for *any* identity             |
+
+**Server key compromise is bounded.** The attacker can only pretend to be
+the server the certificate belongs to. If the certificate is revoked (when
+revocation exists), the attack stops.
+
+**CA key compromise is unbounded.** The attacker can mint certificates for
+hostnames that do not exist yet, for IPs they do not control, for services
+they have never touched. Any client that trusts the CA trusts all of them.
+Revoking the CA means revoking everything at once.
+
+This is why real-world PKIs keep the CA key **offline**, use a
+**hardware security module**, require **multiple operators**, and log every
+issuance. This lab does none of those things — it is documented as a
+deviation.
+
+**Finding #5 — the CA private key is stored unencrypted on the running
+server.**
+
+Severity: high. Treatment: encrypt the key, and consider moving it
+off-host when not in use. Deferred to the hardening-extension phase.
+
+---
+
+### 7.8 GitHub (source of truth for the code)
+
+**Note on the nature of this component.** GitHub is the only component in
+the system that is **not under our physical control**. The application,
+the database, the certificates, and the SSH service are all on the Ubuntu
+host. The repository lives on servers operated by Microsoft.
+
+This changes the threat model. Controls that exist on the host (UFW,
+Fail2Ban, file permissions) do not apply here. The only controls available
+are the ones GitHub provides, plus the discipline of the operator.
+
+#### S — Spoofing
+
+**S1. Authentication is by SSH key.**
+Access to the repository is via an SSH key on the Ubuntu host, or via the
+web interface with a password.
+*Status:* `[implemented]` — key-based.
+
+**S2. Two-factor authentication not enabled.**
+The GitHub account has no 2FA configured. If the account password is
+compromised, the attacker gains access.
+*Scenario:* credential stuffing, phishing, or password reuse on another
+site.
+*Status:* `[gap]` — enable 2FA. This is a one-time change with a
+material impact on the account.
+
+**S3. The SSH key used for GitHub has no passphrase.**
+Same class of risk as the SSH operator key. If the Ubuntu host is
+compromised, the GitHub access is inherited.
+*Status:* `[gap]` — apply the same passphrase treatment as the Kali key.
+
+#### T — Tampering
+
+**T1. `git push --force` can rewrite history.**
+The owner of the repository can force-push and rewrite the commit history
+of `main`. Anyone cloning afterwards sees the new history; the old one is
+gone unless someone has a local copy.
+*Scenario:* an attacker with access to the account rewrites history to hide
+the introduction of a backdoor.
+*Status:* `[gap]` — **branch protection** on `main` prevents force-push
+even by the owner, unless the protection is explicitly disabled.
+
+**T2. Commits are not signed.**
+There is no cryptographic proof that a commit was authored by the
+legitimate operator. GitHub attributes commits by the email address in the
+commit, which is trivial to fake.
+*Scenario:* an attacker pushes a commit with the operator's email set in
+`user.email` — GitHub shows it as "authored by Filipe".
+*Status:* `[gap]` — GPG or SSH-signed commits would close this.
+
+**T3. No integrity check on cloned copies.**
+If someone clones the repo to work on it, they have no way to verify the
+code has not been altered since the last trusted commit.
+*Status:* `[gap]` — signed commits and tags address this.
+
+#### R — Repudiation
+
+**R1. GitHub has its own audit log.**
+Repository actions (pushes, settings changes, branch operations) are
+recorded by GitHub and visible in the account settings.
+*Status:* `[implemented]` — but only for the last 90 days on the free tier.
+
+**R2. No local mirror of the audit log.**
+If the GitHub account is compromised and the audit log is accessed by the
+attacker, they can hide their activity by deleting the events.
+*Status:* `[gap]` — periodic export of the audit log would help.
+
+#### I — Information disclosure
+
+**I1. Private repository, but not encrypted at rest on our side.**
+The repository is private. Content is not visible to unauthenticated users.
+*Status:* `[implemented]` — but assumes the code is safe to leak, i.e. no
+secrets in history. Verified as a pre-requisite to making the repo public.
+
+**I2. Secrets in history.**
+If any secret was ever committed — even if removed later — it remains in
+the history and is recoverable with `git log -p`.
+*Status:* `[gap]` — a `gitleaks` scan of the full history is planned
+before the repo is made public.
+
+**I3. `.gitignore` protects new files, not old ones.**
+The extended `.gitignore` we added prevents *future* commits of keys and
+certificates. It does not remove anything that was committed previously.
+*Status:* `[gap]` — a full history scan is required as a pre-publication
+step.
+
+#### D — Denial of service
+
+**D1. GitHub can suspend the account.**
+Policy violations, a compromised account reported by others, or a billing
+issue can result in suspension. The repository becomes unavailable to
+clones and CI.
+*Status:* `[accepted]` — nothing can be done about this; the mitigation
+is a local clone on the Ubuntu host, which we have.
+
+**D2. Dependency on a third party.**
+The canonical version of the source code lives on Microsoft-operated
+servers. This is a deliberate trade-off.
+*Status:* `[accepted]` — mitigated by keeping a local `git` clone, which
+already exists.
+
+#### E — Elevation of privilege
+
+**E1. The account owner can do anything.**
+The owner of the repository can delete the repo, add collaborators, modify
+protected branches (with the setting enabled), and push to `main`.
+This is by design, but it means that compromising the account compromises
+all repositories under it.
+*Status:* `[implemented]` — by design.
+
+**E2. A compromised GitHub account is a supply-chain attack vector.**
+If the account is compromised, the attacker can publish code in the
+operator's name. Anyone who trusts the operator will trust the code.
+
+*The cost is not only the loss of the repository.* It is that the
+operator's **name** becomes associated with malicious code. For a
+portfolio repository, this is a reputational and trust problem, not just a
+technical one. A portfolio that says "trust my security work" cannot afford
+to be the vector of a supply-chain attack.
+
+**Finding #6 — the GitHub account lacks 2FA, signed commits, and branch
+protection.**
+
+Severity: high (for a public-facing portfolio repository). Treatment:
+enable 2FA, enable signed commits, add branch protection to `main`, enable
+Dependabot, and scan the full history with `gitleaks` before the repo is
+made public.
+
+Deferred to the pre-publication phase (Phase 12). These controls make no
+difference while the repo is private, but become critical the moment it is
+visible.
