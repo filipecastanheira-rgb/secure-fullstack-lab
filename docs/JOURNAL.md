@@ -1156,3 +1156,193 @@ ISO 27001, where every control must be justified whether applied or not.
   rotation model decided in Session 11.
 - Close R-01 by binding FastAPI to loopback.
 - Continue the GRC layer with incident-response and control-mapping.
+
+
+---
+
+## Session 11 — Method discussions that shaped the password policy
+
+This session was not a coding session. It was a series of debates about
+security decisions, several of which changed the initial position. The
+conclusions became `docs/password-policy.md`. This entry records the
+reasoning, not just the outcome, because the reasoning is the part worth
+preserving.
+
+### Discussion 1 — Rotation of passwords
+
+**Initial position:** classic rule — rotate every 30 days, never reuse.
+
+**Counter-argument raised:** rotation on a fixed schedule was designed for
+an era before password managers and MFA. Two problems emerged in practice:
+
+- Users created predictable variants (`Filipe2025!` → `Filipe2026!`),
+  reducing real entropy while satisfying the policy on paper.
+- Operational cost: resets, helpdesk load, and coordination with dependent
+  systems.
+
+NIST SP 800-63B recommends against scheduled rotation in favour of
+event-driven rotation, combined with length and MFA.
+
+**Counter-counter-argument (from the operator):** with a password manager,
+the first problem disappears — the manager generates a random replacement
+with no correlation to the previous one. The user simply accepts it. The
+second problem also shrinks, because rotation becomes a button press
+rather than a support ticket.
+
+This was a good argument. It moved the discussion from "rotation is bad"
+to "rotation is context-dependent".
+
+**Conclusion — the two-speed model.** Rotation is retained where the
+credential is the only control, and removed where a second control (MFA)
+already bounds the exposure window:
+
+| Account type            | Rotation model     | Interval   |
+|-------------------------|--------------------|------------|
+| Human account with MFA  | Event-driven       | On event   |
+| Human account without MFA | Scheduled        | 180 days   |
+| Privileged account      | Scheduled + event  | 90 days    |
+| Service account         | Scheduled + event  | 90 days    |
+
+**Why this is better than either extreme.** "Rotate everything every 30
+days" is expensive and produces predictable variants. "Rotate nothing"
+leaves accounts without MFA exposed indefinitely. The two-speed model
+matches the rotation to the actual risk: if there is no second factor,
+time is the only limit; if there is a second factor, the limit is already
+there.
+
+### Discussion 2 — Separate administrative account
+
+**Initial position:** the operator uses one account (`filipe`) with `sudo`
+for everything.
+
+**Alternative proposed:** split into three accounts:
+
+- `filipe-admin` — privileged, used only when elevation is required
+- `filipe-work` — daily use, no `sudo`
+- `secure-app` — runs the application, no shell, no `sudo`
+
+This is standard practice in production environments: the account used
+for everyday work is not the account that can change the system.
+
+**Decision — deferred, not rejected.** Implementing this now would mean:
+
+- Re-mapping `lab.db` ownership
+- Changing the systemd unit
+- Adjusting Nginx static file permissions
+- Re-testing everything
+
+And the operator is still in the construction phase, where `sudo` is
+needed constantly. The separation becomes meaningful when there is a
+stable set of accounts and permissions to separate. Planned for **Phase 9
+(configuration as code)**, where Ansible makes the migration scriptable
+and testable.
+
+This is recorded in the threat model (§1.2.1) as a deferral with a
+technical rationale — not an environmental excuse.
+
+### Discussion 3 — Repository visibility
+
+**Position:** the repository is private during development and made public
+only when complete.
+
+**What this gives:**
+
+- Time to complete pre-publication hygiene without pressure
+- Reduced exposure while the code is still changing
+- A single, explicit moment when the repository becomes visible
+
+**What it does not give:**
+
+- It does not make the account invisible. An attacker with account access
+  can clone the private repository exactly as if it were public.
+- It does not eliminate the impact of pre-publication exposure — the
+  attacker still gains advance knowledge of the architecture.
+
+**Consequence for the risk register.** R-04 was classified as **Low (4)**
+during development. The reasoning: while the repository is private, the
+worst case is that the attacker obtains a copy of code that will become
+public anyway. The impact rises to 4 if the repository is published
+without the planned controls (2FA, signed commits, branch protection).
+
+### Discussion 4 — Notification as a detection control
+
+**Position:** email notifications on push are configured, and the
+notification address is delivered to the operator's mobile device.
+
+**Why this matters.** A notification delivered only to the workstation is
+limited: it works when the operator is at the workstation, and fails
+otherwise. A notification delivered out-of-band — to a device the
+operator carries — reduces the detection window from hours to minutes,
+regardless of where the operator is.
+
+**What it does not solve.** A notification is a detection control, not a
+prevention control. Between the event and the operator's response, the
+attacker acts. Any data already cloned cannot be un-cloned. The
+notification reduces the *duration* of exposure, not the *fact* of it.
+
+**Recorded in the risk register** as R-04.1, with the containment
+procedure (R-04.2) alongside.
+
+### Discussion 5 — Backup strategy
+
+**Position:** the 3-2-1 rule — 3 copies, 2 media types, 1 off-site.
+
+Applied to this project:
+
+| Copy | Location                          | Medium               |
+|------|-----------------------------------|----------------------|
+| 1    | Ubuntu VM (working copy)          | Internal disk        |
+| 2    | GitHub (canonical remote)         | Cloud (Microsoft)    |
+| 3    | External disk (planned)           | Removable, offline   |
+
+**Why the external copy must be kept disconnected.** A drive that is
+permanently connected is reachable by ransomware and by any process
+running with the operator's privileges. A drive that is disconnected is
+not reachable. The cost is that backups are manual; the benefit is that
+the copy is genuinely independent.
+
+**What backup protects against, and what it does not.**
+
+| Threat                          | Backup helps? |
+|---------------------------------|---------------|
+| Accidental deletion             | Yes           |
+| Disk corruption                 | Yes           |
+| Ransomware (if disconnected)    | Yes           |
+| **Attacker has cloned the repo**| **No**        |
+| **History rewritten remotely**  | Yes (local copy preserves prior state) |
+
+**Recorded as DP-01** in the risk register (§4.2), planned for **Phase
+10 (backup and restore)**.
+
+### Concepts learned
+
+- **A control is not a checkbox.** "Rotate every 30 days" is a rule. "Rotate
+  when the credential is the only control, otherwise rely on MFA" is a
+  decision. The second is defensible; the first is not.
+- **The right answer depends on the context.** Rotation is not bad or good
+  in itself. Its value depends on what other controls exist. A policy that
+  ignores this produces either false security or unnecessary friction.
+- **Detection and prevention are different.** A notification is not a
+  firewall. A firewall is not a notification. Both are needed; neither
+  substitutes the other.
+- **Backup is a copy, not a defence.** Backup protects against loss.
+  It does not protect against exposure. Confusing the two produces a false
+  sense of safety.
+- **Documenting what is not done is part of the work.** Accepted risks and
+  deferred best practices belong in the register. An auditor does not ask
+  "did you do everything?" — they ask "did you decide about everything?".
+- **Deferral needs a technical reason.** "It's a lab" is not a reason.
+  "It depends on X being in place first" is.
+
+### Documents produced
+
+- `docs/password-policy.md` — created (~360 lines). Two-speed rotation
+  model, technical requirements, lifecycle, exceptions, ISO 27001 mapping.
+
+### Next steps
+
+- Write `docs/incident-response.md` — the R-04.2 containment procedure is
+  already a draft of one scenario.
+- Write `docs/control-mapping.md` — OWASP Top 10 / ASVS, ISO 27001 Annex A,
+  NIS2.
+- Then move to code: Phase 4 (authentication) or Phase 6 (pipeline).
