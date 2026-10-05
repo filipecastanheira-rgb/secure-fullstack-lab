@@ -7,7 +7,7 @@ Type=simple
 User=filipe
 Group=filipe
 WorkingDirectory=/home/filipe/secure-fullstack-lab/backend
-ExecStart=/home/filipe/secure-fullstack-lab/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/filipe/secure-fullstack-lab/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=3
 

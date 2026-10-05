@@ -75,20 +75,6 @@ the risk to an acceptable level, not that it eliminates it.
 
 ## 3. Active risks
 
-### R-01 — FastAPI listens on all network interfaces
-
-| Field        | Value |
-|--------------|-------|
-| Source       | Threat model §7.2, Finding #1 |
-| Description  | The FastAPI process binds to `0.0.0.0:8000`, meaning it accepts connections on every interface of the host, not just `127.0.0.1`. |
-| Likelihood   | **3** — UFW blocks external access today, but the exposure becomes real if UFW is ever disabled (for troubleshooting, for example), if a new network interface appears, or if a misconfiguration opens the port. |
-| Impact       | **4** — direct access to the API bypasses TLS termination, security headers, and (future) rate limiting at the edge. Data classification is Internal (asset inventory, no personal data yet); impact will rise to 5 once user accounts exist. |
-| Severity     | **High (12)** |
-| Treatment    | **Mitigate** |
-| Control      | Change the systemd unit `ExecStart` to `--host 127.0.0.1`. The Nginx proxy on the same host continues to reach it. |
-| Phase        | Phase 4 (authentication) — the service definition will be revised anyway. |
-| Residual     | **Low (4)** — the API is only reachable from the host itself. A future Nginx misconfiguration is the only remaining path to exposure. |
-
 ### R-02 — No privilege separation (application runs as the human operator)
 
 | Field        | Value |
@@ -214,33 +200,107 @@ Recognised practices that are **not applied** in this context, with rationale. N
 
 ## 5. Risk distribution
 
-Current state, after treatment plans are applied (residual):
+Snapshot of the register as of **2026-10-05**, after R-01 closure.
 
-| Severity  | Active (before) | Residual (after) |
-|-----------|-----------------|------------------|
-| Critical  | 0               | 0                |
-| High      | 4 (R-01 to R-04)| 0                |
-| Medium    | 3 (R-05 to R-07)| 0                |
-| Low       | 0               | 7                |
-| Accepted  | 5               | 5 (unchanged)    |
+### Current state
 
-**Observation:** every active risk has a treatment plan with a residual of
-Low. No risk is left untreated at High or Medium severity. The accepted
-risks are all in the "negligible" band and are documented.
+| Severity  | Active | Closed | Accepted |
+|-----------|--------|--------|----------|
+| Critical  | 0      | 0      | 0        |
+| High      | 3      | 1      | 0        |
+| Medium    | 3      | 0      | 0        |
+| Low       | 0      | 0      | 0        |
+| Accepted  | —      | —      | 5        |
 
+**Active risks:** R-02 (High), R-03 (High), R-04 (Low, during
+development), R-05 (Medium), R-06 (Medium), R-07 (Medium).
+
+**Closed risks:** R-01.
+
+**Accepted risks:** AR-01 to AR-05.
+
+### Residual projection
+
+Once every active risk is treated as planned:
+
+| Severity  | Active | Residual |
+|-----------|--------|----------|
+| Critical  | 0      | 0        |
+| High      | 3      | 0        |
+| Medium    | 3      | 0        |
+| Low       | 0      | 6        |
+
+Every active risk has a treatment plan that reduces it to Low. No risk
+is left untreated at High or Medium severity after the roadmap completes.
+
+### Observations
+
+- **The gap between current and residual is the roadmap.** Each remaining
+  phase (4, 9, 10, 12) closes one or more risks. The register makes that
+  mapping explicit so progress is measurable, not impressionistic.
+- **R-01 is the first risk closed.** It demonstrates the full cycle:
+  identified in the threat model, classified here, treated, verified, and
+  recorded with evidence. Subsequent closures follow the same format.
+- **Accepted risks do not change** with the roadmap. They were accepted
+  by design, and their rationale stands (see §4.1). If the context changes
+  — for example, if the lab is ever exposed to the Internet — the
+  acceptance is revisited.
 ---
 
 ## 6. Closed risks
 
-*(empty — no risk has been fully treated and verified yet)*
+Risks whose treatment has been **implemented and verified**. The entry
+records the commit, the verification method, and the date of closure.
 
-When a control is implemented and verified, the entry is moved here with:
+### R-01 — FastAPI listens on all network interfaces
 
-- The commit that implemented the control
-- The verification method
-- The date of closure
-- The final residual risk
+| Field        | Value |
+|--------------|-------|
+| Original severity | High (12) |
+| Residual     | **Low (4)** — the API is only reachable from the host itself |
+| Closed on    | 2026-10-05 |
+| Commit       | *(preencher após commit)* |
 
+**Control implemented.**
+
+The systemd unit `ExecStart` was changed from:
+
+    uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+to:
+
+    uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+**Rationale.** Nginx runs on the same host as the API. It reaches the API
+through the loopback interface (`127.0.0.1`), so binding to `0.0.0.0` was
+never required. Binding to loopback ensures that **even if UFW is disabled**
+— for troubleshooting, for example — the API remains unreachable from any
+network interface. The defence no longer depends on a single layer.
+
+**Verification.**
+
+1. `ss -ltnp | grep 8000` on the host now shows:
+
+        LISTEN 0 2048 127.0.0.1:8000 ... uvicorn
+
+   Previously: `0.0.0.0:8000`.
+
+2. `https://192.168.1.173` in the Kali browser continues to work — the
+   full application (Vue frontend, API proxy to FastAPI) loads and the
+   assets table is populated. The Nginx → FastAPI path is unaffected.
+
+3. From the Kali VM, `nc -zv -w 3 192.168.1.173 8000` returns
+   `Connection timed out`. This was already true before the change (UFW
+   blocked it), and remains true now that nothing is listening on the
+   network interface at all.
+
+**Post-closure notes.**
+
+- The change is captured in `deploy/systemd/secure-fullstack-api.service`
+  once the file is re-copied to the repository.
+- The threat model entry **§7.2** that first flagged this (Finding #1)
+  remains valid — it is the origin of this risk, and is preserved for
+  traceability.
 ---
 
 ## 7. Revision history
