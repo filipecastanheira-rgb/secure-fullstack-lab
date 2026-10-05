@@ -1019,3 +1019,140 @@ Recorded in §1.2.1 as an accepted deferral with a technical rationale.
   finding.
 - Then **Statement of Applicability** and **control mapping**.
 - Then proceed to Phase 4 (authentication).
+
+
+---
+
+## Session 10 — Risk register
+
+**Goal:** turn the findings from the threat model into a structured risk
+register with classification, treatment decisions, and residual risk.
+
+### Method
+
+Chose the qualitative approach: **Risk = Likelihood × Impact**, both on a
+1–5 scale.
+
+| Product | Severity |
+|---------|----------|
+| 1–4     | Low      |
+| 5–9     | Medium   |
+| 10–16   | High     |
+| 17–25   | Critical |
+
+Treatment options recorded per risk: **mitigate / accept / transfer /
+avoid**. Every mitigated risk gets a residual value — the risk that
+remains after the control is applied. Residual is never zero; the point of
+recording it is to show the treatment reduces the risk to an acceptable
+level, not that it eliminates it.
+
+### Structure of the register
+
+The document has seven sections:
+
+1. Purpose
+2. Scoring method (this section, for reference by anyone reading later)
+3. Active risks (R-01 to R-07)
+4. Accepted risks and deferred best practices
+5. Risk distribution (snapshot, updated as risks close)
+6. Closed risks
+7. Revision history
+
+The **§4 structure is deliberate** — see below.
+
+### Active risks
+
+Seven risks were classified. Each references its origin in the threat
+model:
+
+| ID   | Risk                                              | Severity  |
+|------|---------------------------------------------------|-----------|
+| R-01 | FastAPI listens on all network interfaces         | High (12) |
+| R-02 | No privilege separation (app runs as `filipe`)    | High (15) |
+| R-03 | CA private key unencrypted on the running server  | High (15) |
+| R-04 | GitHub account exposure                           | Low (4)   |
+| R-05 | No rate limiting at any layer                     | Medium (9)|
+| R-06 | SSH sessions are not recorded                     | Medium (6)|
+| R-07 | No pagination on collection endpoints             | Medium (6)|
+
+### Finding consolidation
+
+Threat model findings #2 and #3 were consolidated into R-02. Both describe
+the same underlying problem from two angles: the application runs with the
+same privilege as the human operator. Keeping them separate would have
+inflated the count without adding information. A single entry with a
+combined treatment plan is more accurate.
+
+### Two risks added beyond formal findings
+
+The threat model listed rate limiting (Nginx §7.1 D1, FastAPI §7.2 D1) and
+pagination (FastAPI §7.2 D2, SQLite §7.4 D2) as gaps, but they did not
+become formal findings because they do not correspond to a single
+component. They were promoted into the register as R-05 and R-07 because
+they affect the system as a whole and have concrete treatment plans.
+
+This is intentional: the register is not a mirror of the findings list. It
+is a **working document** where items earn their place by having a real
+impact and an actionable treatment.
+
+### R-04 — the iterative classification
+
+The R-04 classification changed three times during the session as the
+controls and context were examined:
+
+| Round | Likelihood | Impact | Severity  | Change                            |
+|-------|------------|--------|-----------|-----------------------------------|
+| 1     | 4          | 4      | High (16) | Initial: no 2FA, single password  |
+| 2     | 3          | 4      | High (12) | Device verification via email counted as an implicit second factor |
+| 3     | 2          | 2      | Low (4)   | Repository private during development; strong unique password; push notifications enabled |
+
+**The number was produced by the discussion, not assumed at the start.**
+Each iteration added a real control or a real context and the score
+adjusted. This is how a risk register is supposed to evolve.
+
+### §4 — Accepted risks and deferred best practices
+
+The section was deliberately structured in two parts:
+
+**§4.1 — Accepted risks.** Five risks identified in the threat model and
+**explicitly accepted** without a planned control, each with a written
+rationale. Examples: Nginx version disclosure, no `Host` header validation,
+no certificate revocation infrastructure.
+
+**§4.2 — Deferred best practices.** Ten recognised industry practices
+**not applied** in this context, with the reason. Examples: external-disk
+offline backup, HSM for the CA key, automatic credential rotation, WAF,
+centralised SIEM, external penetration test, separation of duties.
+
+**Why this second section matters.** A register that only lists what is
+implemented fails the audit question *"why did you not implement X?"*.
+Documenting what is deliberately **not done** — with rationale — is part
+of the work. This is the same logic as the Statement of Applicability in
+ISO 27001, where every control must be justified whether applied or not.
+
+### Documents produced
+
+- `docs/risk-register.md` — created (initial version, ~600 lines)
+
+### Concepts learned
+
+- **Risk is a product, not a feeling.** Likelihood × Impact forces
+  discipline: you cannot call something "high" without answering both
+  questions separately.
+- **Residual is never zero.** Recording it makes the treatment measurable,
+  and prevents the illusion of complete elimination.
+- **Identification and classification are separate steps.** Doing them
+  together produces bias — you tend to classify highly what was hard to
+  find. The threat model identifies; the register classifies.
+- **Consolidation is not simplification.** Two findings about the same
+  root cause are one risk with two symptoms, not two risks.
+- **Justifying non-implementation is a control.** Accepted risks and
+  deferred best practices are not gaps — they are decisions, and they
+  belong in the register with their reasoning.
+
+### Next steps
+
+- Write the password policy (`docs/password-policy.md`) — the two-speed
+  rotation model decided in Session 11.
+- Close R-01 by binding FastAPI to loopback.
+- Continue the GRC layer with incident-response and control-mapping.

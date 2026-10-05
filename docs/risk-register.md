@@ -103,6 +103,7 @@ the risk to an acceptable level, not that it eliminates it.
 | Phase        | Phase 10 (backup and restore) — the offline key handling pairs with the backup procedure. |
 | Residual     | **Low (4)** — the key is encrypted at rest and not present on the running host. A compromised operator machine can still decrypt it, but that requires a second factor. |
 
+
 ### R-04 — GitHub account exposure (supply chain and history tampering)
 
 | Field        | Value |
@@ -114,13 +115,70 @@ the risk to an acceptable level, not that it eliminates it.
 | Severity     | **Low (4)** during development; **Medium (8)** if published without the planned controls. |
 | Treatment    | **Mitigate** |
 | Control (prevention) | (1) Enable 2FA on the GitHub account. (2) Configure GPG or SSH-signed commits and require them. (3) Branch protection on `main`: no force-push, no deletion, require signed commits. (4) Enable Dependabot. (5) Run `gitleaks` against the full history before public release. |
-| Control (detection)  | (1) **Email notifications on push** — `[implemented]`. Any push triggers an email to the configured address. (2) Periodic review of the GitHub security log (90-day retention on personal accounts). |
-| Control (containment)| Documented procedure for the "account compromise" scenario: make the repository private again (if already public), revoke all deploy keys and personal access tokens, rotate the SSH key, change the account password, review the commit history for unreviewed changes. This procedure belongs in `docs/incident-response.md` (planned). |
+| Control (detection)  | See §R-04.1 below. |
+| Control (containment)| See §R-04.2 below. |
 | Control (recovery)   | Repository backup per the 3-2-1 rule: local clone on the Ubuntu host, remote on GitHub, and offline copy on an external disk kept disconnected. `[planned: phase 10]`. |
-| Phase        | Prevention controls: Phase 12 (pre-publication polish). Backup: Phase 10. Detection and containment: documented in the incident-response playbook when written. |
+| Phase        | Prevention: Phase 12 (pre-publication polish). Backup: Phase 10. Detection and containment: documented in §R-04.1 and §R-04.2. |
 | Residual     | **Low (4)** — the repository is private, the password is strong and unique, device verification is active, and push notifications are enabled. The remaining risk is pre-publication advantage in the (unlikely) event of a full account compromise. |
 
 **Why this is not zero.** Zero risk does not exist in a risk register. The repository being private reduces *impact* (no supply chain until publication) but does not eliminate the *likelihood* of account compromise. A notification is a detection control, not a prevention control: the attacker has a time window between the action and the operator's response, and any data they have already cloned cannot be un-cloned. The controls reduce the exposure; they do not erase it.
+
+#### R-04.1 — Detection controls
+
+1. **Email notifications on push** — `[implemented]`. Any push to the
+   repository triggers an email to the address configured in the
+   repository settings. The notification contains the commit SHA, author,
+   branch, changed files, and commit message.
+
+2. **Out-of-band delivery** — `[implemented]`. The notification address is
+   the operator's mobile device, not only the workstation. This reduces the
+   detection window from hours (when at the workstation) to minutes,
+   regardless of where the operator is.
+
+3. **GitHub security log** — available and reviewed periodically. Retains
+   90 days of activity on personal accounts. Covers events not reported by
+   push notifications: additions of SSH keys, creation of personal access
+   tokens, password changes, 2FA state changes.
+
+#### R-04.2 — Containment procedure
+
+If a push notification is received that does not correspond to an expected
+action, the operator follows these steps in order:
+
+1. **Verify on GitHub, not via the email.** Open
+   `github.com/filipecastanheira-rgb/secure-fullstack-lab/commits/main`
+   in a browser session already authenticated, and confirm whether the
+   commit exists. Do not click links in the notification email — the
+   notification itself could be spoofed.
+
+2. **Change visibility to private** (if the repository is already public).
+   This is the first action because it limits who can see the potentially
+   altered state. It does not undo an already-cloned copy, but it stops
+   the exposure from spreading.
+
+3. **Revoke all credentials** for the account:
+   - All deploy keys
+   - All personal access tokens
+   - The SSH key used for pushes from the Ubuntu host
+   - Any active sessions in the account settings
+
+4. **Rotate the account password** and **enable 2FA** immediately, if not
+   already enabled.
+
+5. **Review the commit history** with `git log -p` against a trusted local
+   clone, to identify what was changed and whether the local copy still
+   holds the pre-incident state.
+
+6. **Record the incident** — date, detection time, actions taken, duration
+   of exposure. This feeds the incident-response playbook
+   (`docs/incident-response.md`, planned).
+
+**Note.** This procedure is documented in the risk register for
+convenience. It will be moved to the incident-response playbook once that
+document exists, with a reference back to this entry.
+
+
+
 ### R-05 — No rate limiting at any layer
 
 | Field        | Value |
@@ -259,8 +317,7 @@ records the commit, the verification method, and the date of closure.
 | Original severity | High (12) |
 | Residual     | **Low (4)** — the API is only reachable from the host itself |
 | Closed on    | 2026-10-05 |
-| Commit       | *(preencher após commit)* |
-
+| Commit       | `f0bd5ee` — "fix(api): bind FastAPI to loopback; close R-01 in risk register" |
 **Control implemented.**
 
 The systemd unit `ExecStart` was changed from:
