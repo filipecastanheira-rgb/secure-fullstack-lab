@@ -1346,3 +1346,202 @@ the copy is genuinely independent.
 - Write `docs/control-mapping.md` — OWASP Top 10 / ASVS, ISO 27001 Annex A,
   NIS2.
 - Then move to code: Phase 4 (authentication) or Phase 6 (pipeline).
+
+---
+
+## Session 12 — IR-2 to IR-5, control mapping, and R-01 closure
+
+**Goal:** complete the incident response playbook and the control mapping,
+and close the first risk in the register.
+
+### R-01 closed — first risk to complete the full cycle
+
+R-01 (FastAPI listening on all interfaces) was identified in the threat
+model (Finding #1) and classified in the risk register (High, 12). This
+session it was treated, verified, and closed.
+
+**Control implemented.** The systemd unit was changed:
+
+    ExecStart=... uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+to:
+
+    ExecStart=... uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+**Rationale.** Nginx runs on the same host and reaches the API through
+loopback. Binding to `0.0.0.0` was never required. Binding to loopback
+ensures that even if UFW is disabled, the API remains unreachable.
+
+**Verification.**
+
+1. `ss -ltnp | grep 8000` now shows `127.0.0.1:8000`, not `0.0.0.0:8000`.
+2. The full application (`https://192.168.1.173`) continues to work from
+   Kali — the Nginx → FastAPI path is unaffected.
+3. From Kali: `nc -zv -w 3 192.168.1.173 8000` returns `Connection timed
+   out`. It was already blocked by UFW; now it is also not listening.
+
+**Commit:** `f0bd5ee` — "fix(api): bind FastAPI to loopback; close R-01
+in risk register".
+
+**Significance.** This is the first risk to go through the full cycle:
+identified → classified → treated → verified → closed. Subsequent
+closures follow the same format. The register's §6 (Closed risks) now has
+its first entry.
+
+### Incident response playbook — all five playbooks written
+
+`docs/incident-response.md` was extended from IR-1 only (initial commit)
+to all five scenarios:
+
+| ID   | Scenario                                |
+|------|-----------------------------------------|
+| IR-1 | GitHub account compromise               |
+| IR-2 | Ubuntu host compromise                  |
+| IR-3 | CA private key compromise               |
+| IR-4 | Physical loss or theft of the host laptop |
+| IR-5 | Suspected data exfiltration of `lab.db` |
+
+**Framework.** The playbook follows **NIST SP 800-61 Rev. 2**, with the
+four standard phases: Preparation, Detection and Analysis, Containment /
+Eradication / Recovery, and Post-Incident Activity.
+
+**Structure of each playbook.** Trigger, Severity, Detection, Containment,
+Eradication, Recovery, Evidence to preserve, Post-mortem requirements.
+This ensures consistency between scenarios and makes the document easy to
+navigate under pressure.
+
+**Decisions worth noting.**
+
+- **IR-2 (host compromise) does not recommend rebooting.** Rebooting
+  destroys volatile evidence (running processes, network connections,
+  memory). Containment is to isolate the network, not to reboot.
+- **IR-2 and IR-5 both instruct to take a VMware snapshot** before any
+  cleanup. This is the forensic evidence that cannot be recreated later.
+- **IR-3 (CA key) always escalates to SEV-1**, because the CA is the root
+  of trust and its compromise invalidates every certificate it signed.
+- **IR-4 (physical loss) is honest about scope.** It states explicitly
+  that software controls are irrelevant once the device is out of the
+  operator's possession. The only effective control is OS-level disk
+  encryption. The playbook exists to systematise the **digital** cleanup
+  after the physical event.
+- **IR-5 recognises** that the current data classification of `lab.db` is
+  Internal (no personal data), and that severity rises once user accounts
+  exist.
+
+**Post-mortem template.** Included as a separate block in section 7.
+Filled out after an incident, not during. Requires distinguishing
+immediate cause, contributing causes, and root cause — a distinction that
+prevents superficial learning.
+
+**Single-operator limitation.** Section 4.1 documents that separation of
+duties does not exist in this lab: the same person investigates, decides,
+acts, and documents. Three risks are acknowledged (confirmation bias, no
+second opinion, documentation skipped under pressure) with two
+compensating measures (post-mortem written after the event; findings
+recorded in the risk register so the "second opinion" comes from the
+record).
+
+**File size.** 667 lines. Committed in two steps: initial IR-1 (`3805b03`)
+and the completion (`08b27bd`).
+
+### Control mapping — connecting the project to frameworks
+
+`docs/control-mapping.md` was created (428 lines, 181 table rows). It maps
+the controls implemented in this project to four frameworks:
+
+- **OWASP Top 10 — 2021** (all 10 categories)
+- **OWASP ASVS 4.0.3** (14 chapters, target Level 2)
+- **ISO/IEC 27001:2022 Annex A** (93 controls, assessed by section)
+- **NIS2 Article 21(2)** (10 categories)
+
+**Structure.** For each framework, a table lists the control or category,
+its status (`[implemented]` / `[planned: N]` / `[partial]` / `[accepted]`
+/ `[n/a]`), and where it is addressed. A final consolidated view aligns
+all three frameworks per area of the project.
+
+**Purpose of the mapping.** Three reasons:
+
+1. **For the operator.** A control is only meaningful if it can be traced
+   to a requirement. This prevents implementing for the sake of
+   implementing.
+2. **For an auditor.** Reviewing whether a framework is satisfied means
+   reading what the system actually does. The mapping saves the effort of
+   reverse-engineering.
+3. **For a portfolio reviewer.** It shows the work is grounded in
+   standards, not improvised.
+
+**Every gap has a phase.** Section 7 lists the gaps surfaced by the
+mapping and assigns each to a phase of the roadmap. None is unplanned.
+This is what makes the mapping useful — it is not a status report, it is
+the interface between the requirements and the roadmap.
+
+**ASVS level.** The project targets **ASVS Level 2**, the standard for
+applications handling sensitive data. Level 1 controls are largely
+implemented. Level 2 controls are distributed across Phases 4 to 8.
+
+**File size.** 428 lines. Commit `e41f58a`.
+
+### Phase 5 (GRC) — completed
+
+With the control mapping written, the entire GRC layer of the project is
+complete:
+
+| Document                 | Lines | Focus                                    |
+|--------------------------|-------|------------------------------------------|
+| `docs/threat-model.md`   | ~1200 | STRIDE analysis of six components        |
+| `docs/risk-register.md`  | ~700  | Active, accepted, and deferred risks     |
+| `docs/password-policy.md`| ~360  | Two-speed rotation model, ISO mapping    |
+| `docs/incident-response.md` | ~667 | Five playbooks, NIST SP 800-61          |
+| `docs/control-mapping.md`| ~428  | OWASP, ASVS, ISO 27001, NIS2             |
+
+**Total: roughly 3,400 lines of GRC documentation**, all traceable to
+recognised standards.
+
+### Concepts learned
+
+- **A risk closure is a moment, not a checkbox.** R-01 required
+  identification, classification, treatment, verification, and
+  documentation. The register recorded all five. This is the difference
+  between "we fixed it" and "we can prove it was fixed".
+- **A playbook is a sequence, not a checklist.** IR-2's first step is
+  "do not reboot" — a negative action, not a positive one. Playbooks must
+  encode what **not** to do, because instinct under pressure often points
+  the wrong way.
+- **Scope honesty is a control.** IR-4 explicitly states that physical
+  loss is beyond software mitigation. Recognising the limits of what can
+  be controlled is part of the analysis, not an admission of defeat.
+- **Every gap has a phase.** The control mapping is only useful if the
+  gaps it surfaces are assignable. A gap without an owner is a liability;
+  a gap with a phase is a roadmap item.
+- **Frameworks overlap.** OWASP Top 10 A02 and ISO 27001 A.8.24 both
+  cover cryptographic failures. The value of mapping to multiple
+  frameworks is not redundancy — it is triangulation. A control that
+  satisfies three frameworks is more defensible than one that satisfies
+  one.
+- **Complex documents need heredocs.** When writing Markdown with nested
+  code blocks, paste into `nano` fails silently. `cat > file << 'EOF'`
+  writes the content literally without interpretation. Small lesson,
+  large time saved.
+
+### Commits this session
+
+| Commit  | Description                                              |
+|---------|----------------------------------------------------------|
+| `f0bd5ee` | fix(api): bind FastAPI to loopback; close R-01 in risk register |
+| `b9d83ba` | docs: add session 10 journal; restructure R-04 with detection and containment |
+| `2d31f35` | docs: add password policy with two-speed rotation model  |
+| `2fa681d` | docs(journal): register session 11 — method discussions and password policy |
+| `3805b03` | docs: add incident response playbook (NIST SP 800-61) with IR-1 |
+| `08b27bd` | docs(incident-response): complete IR-2 to IR-5           |
+| `e41f58a` | docs: add control mapping (OWASP Top 10, ASVS, ISO 27001, NIS2) |
+
+### Next step
+
+With the GRC layer complete, the project moves to code:
+
+- **Phase 4** — authentication, RBAC, rate limiting (2-3 sessions)
+- **Phase 6** — CI/CD pipeline with SAST, SCA, secrets scanning (1-2 sessions)
+
+The order is a design decision: authentication first, because Phase 7
+(deliberate vulnerabilities) requires user accounts to exist for IDOR to
+be demonstrable.
