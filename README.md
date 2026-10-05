@@ -121,15 +121,14 @@ in exactly two places:
 
 ## Documentation
 
-- [`docs/JOURNAL.md`](docs/JOURNAL.md) — development journal: decisions,
-  issues, lessons, one section per working session.
-- [`deploy/`](deploy/) — deployment artefacts: systemd units, Nginx config,
-  hardening files.
-- `docs/threat-model.md` — STRIDE analysis (planned)
-- `docs/risk-register.md` — risks with likelihood, impact, treatment (planned)
-- `docs/security-policy.md` — vulnerability management, patching (planned)
-- `docs/incident-response.md` — IR playbook (planned)
-- `docs/control-mapping.md` — mapping to OWASP / ISO 27001 / NIS2 (planned)
+- [`docs/JOURNAL.md`](docs/JOURNAL.md) — development journal. One section per working session: decisions, issues, lessons learned. The most honest artefact in the repository.
+- [`docs/threat-model.md`](docs/threat-model.md) — STRIDE analysis of the system. Covers six components (Nginx, FastAPI, SQLite, SSH, PKI, GitHub), six trust boundaries, and six formal findings.
+- [`docs/risk-register.md`](docs/risk-register.md) — active, accepted, and deferred risks. Each entry classified by likelihood × impact, with treatment and residual risk. Includes closed risks with commit references.
+- [`docs/password-policy.md`](docs/password-policy.md) — credential requirements, lifecycle, and the two-speed rotation model. Mapped to NIST SP 800-63B and ISO 27001 A.5.17.
+- [`docs/incident-response.md`](docs/incident-response.md) — five playbooks (GitHub compromise, host compromise, CA key compromise, physical loss, data exfiltration) following NIST SP 800-61 Rev. 2.
+- [`docs/control-mapping.md`](docs/control-mapping.md) — mapping of the project's controls to OWASP Top 10, OWASP ASVS, ISO/IEC 27001:2022 Annex A, and NIS2 Article 21(2).
+- [`deploy/`](deploy/) — deployment artefacts: systemd units, Nginx configuration, hardening files, and installation notes.
+
 
 ## Roadmap
 
