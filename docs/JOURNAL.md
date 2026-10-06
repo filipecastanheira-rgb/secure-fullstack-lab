@@ -1545,3 +1545,203 @@ With the GRC layer complete, the project moves to code:
 The order is a design decision: authentication first, because Phase 7
 (deliberate vulnerabilities) requires user accounts to exist for IDOR to
 be demonstrable.
+
+---
+
+## Session 13 — Login endpoint with JWT
+
+**Goal:** continue Phase 4 (authentication). This session adds the login
+flow: the ability to exchange credentials for a signed token.
+
+The session was planned for 1 hour and finished slightly over. Two commits
+were produced: one for the user model and hashing (session 12 continuation),
+one for the login endpoint itself.
+
+### Part 1 — User model, hashing, and user creation
+
+The foundation of authentication is storing user credentials safely.
+
+**Model added: `User`** in `backend/app/models.py`.
+
+| Field           | Type             | Notes                                    |
+|-----------------|------------------|------------------------------------------|
+| `id`            | Integer, PK      | Auto-increment                           |
+| `email`         | String(254), UNIQUE, indexed | 254 = RFC 5321 maximum       |
+| `password_hash` | String(255)      | Argon2id hash (~95 chars typical)        |
+| `role`          | String(20)       | `user` or `admin`                        |
+| `is_active`     | Boolean          | Deactivation instead of deletion         |
+| `created_at`    | DateTime (UTC)   | Same pattern as `Asset`                  |
+
+**Design decisions:**
+
+- **`role` as a string, not an Enum.** Adding a role to an Enum requires a
+  migration. A string with a `Literal["user", "admin"]` in the Pydantic
+  schema gives the same validation without the coupling to the database.
+- **`is_active` instead of deleting users.** Preserves history for audit
+  and non-repudiation. Login checks it; a deactivated user cannot
+  authenticate.
+- **UNIQUE constraint at the database level, not only in the application.**
+  The application returns a clean 409 if the email exists; the database
+  constraint is the last line of defence against race conditions.
+
+**Hashing module created: `backend/app/security.py`.**
+
+Contains `hash_password()` and `verify_password()` using `argon2-cffi`.
+
+**Why argon2id and not bcrypt.** Both are acceptable per OWASP. Argon2id
+is memory-hard: each hash requires 64 MB of RAM and 3 iterations. GPUs
+cannot parallelise this easily because they lack the memory bandwidth to
+run hundreds of concurrent hashes. bcrypt is CPU-bound, and a modern GPU
+can test far more bcrypt hashes per second than argon2id hashes.
+
+The default parameters (`m=65536, t=3, p=4`) are above the OWASP minimum.
+In a production system they would be tuned so a single hash takes
+~250-500 ms on the target hardware.
+
+**Uniform error handling in `verify_password`.** The function catches
+`VerifyMismatchError`, `VerificationError`, and `InvalidHashError`, and
+returns `False` in all cases. Without this, a corrupted hash in the
+database would raise an exception, the endpoint would return 500, and an
+attacker would learn something about the state of that account. The three
+failure cases are indistinguishable from the outside — which is the
+point.
+
+**Endpoint `POST /api/users`.** Currently unauthenticated, with an
+explicit note in the docstring that this is temporary — once RBAC is in
+place, the endpoint is restricted to `admin` role.
+
+### Part 2 — Login endpoint with JWT
+
+**Library chosen: `PyJWT`** over `python-jose`. The latter has been slow
+to address CVEs and has lost mindshare. `PyJWT 2.15.1` is the standard.
+
+**JWT secret handling.** The secret is:
+
+- Generated on first startup with `secrets.token_urlsafe(64)` — 64 bytes
+  of cryptographic randomness, encoded to URL-safe base64.
+- Stored in `backend/.jwt_secret` with permissions `0600`.
+- Added to `.gitignore` **before** the file was created.
+- Loaded once, at module import, and cached in `_JWT_SECRET`.
+
+**Why a persistent file and not in-memory generation.** If the secret
+were regenerated on every restart, every previously issued token would
+become invalid — technically fine, but it forces re-login on every service
+restart and does not reflect production practice. In a real deployment the
+secret comes from an environment variable injected by the deploy system.
+
+**The critical security detail — `algorithms=["HS256"]` explicit.**
+
+`jwt.decode()` is called with the algorithm list **explicitly**:
+
+    jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+
+Without this argument, PyJWT would accept any algorithm declared in the
+token's own header. That enables the `alg: none` class of attacks
+(CVE-2015-9235 and variants), where an attacker crafts a token with no
+signature and a header claiming no algorithm is used, and the server
+accepts it as valid.
+
+The fix is one keyword argument. The bug has been exploited in the wild.
+This is worth remembering for any interview question about JWT security.
+
+**Token payload.**
+
+    {
+      "sub": "1",            # user id as string (RFC 7519)
+      "role": "admin",       # embedded so downstream checks avoid DB hit
+      "iat": 1791318462,     # issued at
+      "exp": 1791319354      # expires at
+    }
+
+**Access token lifetime: 15 minutes.** JWTs cannot be revoked before
+expiry. The standard mitigation is to make expiry short. A refresh token
+mechanism (planned for the next session) allows longer sessions without
+long-lived access tokens.
+
+**Endpoint `POST /api/auth/login`.**
+
+- Accepts `LoginRequest` (email + password)
+- Returns `TokenResponse` (`access_token`, `token_type="bearer"`)
+- On failure returns 401 with `detail: "Invalid email or password."`
+
+**User enumeration prevention.** The same message is returned for:
+
+- Email does not exist
+- Password is wrong
+- User exists but is inactive (`is_active=False`)
+
+This prevents an attacker from probing the API with a list of candidate
+emails and learning which ones are valid accounts. The behaviour was
+verified explicitly with two `curl` calls — one with a valid email and
+wrong password, another with a non-existent email. Both returned the same
+response.
+
+### Verification performed
+
+1. Created user `filipe@example.com` with role `admin` and a 33-character
+   password. Response was 201 with the user object, and no
+   `password_hash` field.
+2. Confirmed in the database that `password_hash` begins with
+   `$argon2id$v=19$m=65536,t=3,p=4$...`. This confirms the algorithm and
+   parameters are what the code requested.
+3. Tried to create the same email again → 409 Conflict with a clear
+   message.
+4. Tried to create a user with a password of 5 characters → 422 from
+   Pydantic before the endpoint ran.
+5. Logged in with correct credentials → 200 with a JWT.
+6. Decoded the payload of the issued token → confirmed `sub`, `role`,
+   `iat`, `exp` and a 15-minute lifetime (900 seconds).
+7. Logged in with wrong password → 401, `Invalid email or password.`
+8. Logged in with non-existent email → 401, **same message**.
+
+### Concepts learned
+
+- **`EmailStr` is stricter than it looks.** It rejects `.local` because
+  `.local` is an RFC 6762 reserved domain for mDNS, not a valid email
+  domain. `example.com` is the only reserved domain that passes. This was
+  a useful surprise during testing — the validation is genuine.
+- **Argon2id has parameters that matter.** Reading a hash like
+  `$argon2id$v=19$m=65536,t=3,p=4$...` and knowing what each segment means
+  is a skill. `m` (memory), `t` (iterations), `p` (parallelism) determine
+  the cost to an attacker.
+- **JWT is signed, not encrypted.** Anyone can read the payload. Do not
+  put secrets in it. The signature only proves it has not been altered.
+- **The `algorithms` argument is not optional.** Passing it explicitly is
+  the difference between a safe implementation and a vulnerable one.
+- **Uniform error messages are a control.** Returning the same 401 for
+  three different failure cases is not laziness — it is prevention of
+  user enumeration.
+- **Secrets belong in files that are gitignored, not in code.** The
+  `.gitignore` entry was added *before* the file was created, so there was
+  no window where the secret could have been accidentally committed.
+
+### Files changed
+
+- `backend/app/models.py` — added `User` model
+- `backend/app/schemas.py` — added `UserCreate`, `UserRead`,
+  `LoginRequest`, `TokenResponse`
+- `backend/app/security.py` — created (argon2id hashing, JWT creation and
+  validation)
+- `backend/app/main.py` — added `POST /api/users` and `POST /api/auth/login`
+- `backend/requirements.txt` — created, pinned to installed versions
+- `.gitignore` — added `.jwt_secret`
+
+### Commits this session
+
+| Commit  | Description                                              |
+|---------|----------------------------------------------------------|
+| `68c7865` | feat(auth): add User model, argon2 hashing, and user creation endpoint |
+| `60708fc` | feat(auth): add login endpoint with JWT access token     |
+
+### Next step
+
+Phase 4, session 3:
+
+- Dependency `get_current_user` — extracts and validates the JWT from
+  the `Authorization: Bearer <token>` header
+- Protect the asset endpoints behind authentication
+- Endpoint `GET /api/users/me` — first authenticated endpoint
+- Role-based access control (RBAC) — `admin` vs `user` on a subset of
+  endpoints
+- Rate limiting at the Nginx level for `/api/auth/login`
+- End-to-end tests covering the login → token → protected endpoint flow
