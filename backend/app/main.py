@@ -15,12 +15,13 @@ reintroduced with an explicit origin allowlist.
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import models
 from app.database import Base, engine, get_db
-from app.schemas import AssetCreate, AssetRead
+from app.schemas import AssetCreate, AssetRead, UserCreate, UserRead
+from app.security import hash_password
 
 
 @asynccontextmanager
@@ -29,7 +30,9 @@ async def lifespan(app: FastAPI):
     Runs on startup (before the first request) and on shutdown.
 
     We use it to create database tables. SQLAlchemy's create_all is
-    idempotent: it creates only tables that do not exist yet.
+    idempotent: it creates only tables that do not exist yet. This means
+    adding a new model (e.g. User) does not require a migration tool for
+    now — the table is created on the next startup.
     """
     Base.metadata.create_all(bind=engine)
     yield
@@ -37,7 +40,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Secure Fullstack Lab API",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -51,6 +54,10 @@ def read_root():
 def read_hello():
     return {"message": "Hello from FastAPI 👋"}
 
+
+# =============================================================================
+# Assets
+# =============================================================================
 
 @app.get("/api/assets", response_model=list[AssetRead])
 def list_assets(db: Session = Depends(get_db)):
@@ -74,3 +81,47 @@ def create_asset(payload: AssetCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(asset)
     return asset
+
+
+# =============================================================================
+# Users
+# =============================================================================
+
+@app.post(
+    "/api/users",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_user(payload: UserCreate, db: Session = Depends(get_db)):
+    """
+    Create a new user.
+
+    NOTE: this endpoint is currently unauthenticated. In the current
+    phase of the roadmap it exists only to allow creating the first user
+    (bootstrap). Once authentication and RBAC are in place, this endpoint
+    will be restricted to `admin` role, and a separate public endpoint
+    will handle self-registration with additional controls.
+    """
+    # Uniqueness check. The database also enforces this via UNIQUE
+    # constraint, but checking here produces a clean 409 response instead
+    # of an IntegrityError from SQLAlchemy.
+    existing = (
+        db.query(models.User)
+        .filter(models.User.email == payload.email)
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists.",
+        )
+
+    user = models.User(
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

@@ -11,9 +11,14 @@ touching the database, and vice-versa.
 """
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+
+# =============================================================================
+# Assets
+# =============================================================================
 
 class AssetBase(BaseModel):
     """Fields shared by all Asset schemas."""
@@ -32,5 +37,38 @@ class AssetRead(AssetBase):
     id: int
     created_at: datetime
 
-    # Allows Pydantic to read data directly from SQLAlchemy objects.
+    model_config = ConfigDict(from_attributes=True)
+
+
+# =============================================================================
+# Users
+# =============================================================================
+
+class UserCreate(BaseModel):
+    """
+    Payload to create a new user.
+
+    `role` is restricted to the two values the application currently
+    supports. When the API is public, this field will be removed from
+    UserCreate and set only by an administrator endpoint.
+    """
+    email: EmailStr
+    password: str = Field(..., min_length=15, max_length=128)
+    role: Literal["user", "admin"] = "user"
+
+
+class UserRead(BaseModel):
+    """
+    User representation returned by the API.
+
+    Note: `password_hash` is deliberately absent. This is the whole point
+    of separating schemas from models — the hash exists in the database
+    but is never serialised to a client, even by accident.
+    """
+    id: int
+    email: EmailStr
+    role: str
+    is_active: bool
+    created_at: datetime
+
     model_config = ConfigDict(from_attributes=True)
