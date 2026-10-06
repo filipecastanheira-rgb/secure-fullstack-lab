@@ -72,3 +72,29 @@ class UserRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+
+# =============================================================================
+# Authentication
+# =============================================================================
+
+class LoginRequest(BaseModel):
+    """
+    Login credentials.
+
+    Deliberately does not use the same constraints as UserCreate — we do
+    not want to reveal the password policy (min length, complexity) to
+    an attacker who is guessing credentials. The only thing that matters
+    here is whether the provided password matches the stored hash.
+    """
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    """
+    Returned by the login endpoint on success.
+    """
+    access_token: str
+    token_type: str = "bearer"

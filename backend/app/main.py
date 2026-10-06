@@ -20,9 +20,15 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import Base, engine, get_db
-from app.schemas import AssetCreate, AssetRead, UserCreate, UserRead
-from app.security import hash_password
-
+from app.schemas import (
+    AssetCreate,
+    AssetRead,
+    LoginRequest,
+    TokenResponse,
+    UserCreate,
+    UserRead,
+)
+from app.security import create_access_token, hash_password, verify_password
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -125,3 +131,44 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+
+
+# =============================================================================
+# Authentication
+# =============================================================================
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate a user and return a JWT access token.
+
+    On success: 200 with a TokenResponse.
+    On failure: 401 with a generic message.
+
+    The message is deliberately the same whether the email does not exist
+    or the password is wrong. Distinguishing between the two would allow
+    an attacker to enumerate valid accounts.
+    """
+    user = (
+        db.query(models.User)
+        .filter(models.User.email == payload.email)
+        .first()
+    )
+
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = create_access_token(subject=str(user.id), role=user.role)
+    return TokenResponse(access_token=token)
