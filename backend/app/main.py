@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import Base, engine, get_db
+from app.dependencies import get_current_user, require_admin
 from app.schemas import (
     AssetCreate,
     AssetRead,
@@ -29,6 +30,7 @@ from app.schemas import (
     UserRead,
 )
 from app.security import create_access_token, hash_password, verify_password
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,7 +48,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Secure Fullstack Lab API",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -64,9 +66,15 @@ def read_hello():
 # =============================================================================
 # Assets
 # =============================================================================
+# Both endpoints require an authenticated user. Any authenticated user can
+# list and create assets. Ownership and per-user filtering will be added in
+# a later phase (Phase 7, IDOR demonstration).
 
 @app.get("/api/assets", response_model=list[AssetRead])
-def list_assets(db: Session = Depends(get_db)):
+def list_assets(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_user),
+):
     """Return all assets stored in the database."""
     return db.query(models.Asset).order_by(models.Asset.id).all()
 
@@ -76,7 +84,11 @@ def list_assets(db: Session = Depends(get_db)):
     response_model=AssetRead,
     status_code=status.HTTP_201_CREATED,
 )
-def create_asset(payload: AssetCreate, db: Session = Depends(get_db)):
+def create_asset(
+    payload: AssetCreate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(get_current_user),
+):
     """Create a new asset from a validated JSON payload."""
     asset = models.Asset(
         hostname=payload.hostname,
@@ -98,19 +110,21 @@ def create_asset(payload: AssetCreate, db: Session = Depends(get_db)):
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
 )
-def create_user(payload: UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
     """
     Create a new user.
 
-    NOTE: this endpoint is currently unauthenticated. In the current
-    phase of the roadmap it exists only to allow creating the first user
-    (bootstrap). Once authentication and RBAC are in place, this endpoint
-    will be restricted to `admin` role, and a separate public endpoint
-    will handle self-registration with additional controls.
+    Requires administrator privileges. The bootstrap problem (creating the
+    first admin when no user exists yet) was solved manually during
+    development — the endpoint was unauthenticated for one session, and an
+    admin user was created via curl. After that, the endpoint was locked
+    down. In a production system, a separate bootstrap mechanism
+    (environment-seeded admin, or a one-time setup command) would be used.
     """
-    # Uniqueness check. The database also enforces this via UNIQUE
-    # constraint, but checking here produces a clean 409 response instead
-    # of an IntegrityError from SQLAlchemy.
     existing = (
         db.query(models.User)
         .filter(models.User.email == payload.email)
@@ -132,6 +146,20 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     return user
 
+
+@app.get("/api/users/me", response_model=UserRead)
+def read_current_user(
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Return the profile of the currently authenticated user.
+
+    This is the simplest authenticated endpoint — it exists to verify that
+    the authentication flow works end-to-end: login returns a token, the
+    token is sent in the Authorization header, the dependency validates
+    it, and the endpoint returns the user the token represents.
+    """
+    return current_user
 
 
 # =============================================================================
