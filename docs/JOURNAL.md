@@ -1745,3 +1745,337 @@ Phase 4, session 3:
   endpoints
 - Rate limiting at the Nginx level for `/api/auth/login`
 - End-to-end tests covering the login → token → protected endpoint flow
+
+---
+
+## Session 14 — Authorization, RBAC, and rate limiting
+
+**Goal:** complete the authentication flow by adding authorisation. Login
+existed but nothing used it. This session makes the token useful: endpoints
+now require it, and some require a specific role.
+
+The session also closes R-05 (rate limiting) in the risk register and
+updates the threat model to reflect the state of Phase 4.
+
+### What was added
+
+**`backend/app/dependencies.py`** — a new module containing the FastAPI
+dependencies used across endpoints.
+
+Why a separate file instead of placing them in `security.py` or `main.py`:
+
+- `security.py` contains cryptographic primitives and knows nothing about
+  FastAPI. `get_current_user` uses `Depends`, `HTTPBearer`, and
+  `HTTPException` — FastAPI concepts. Mixing them would couple
+  cryptography to the framework.
+- `main.py` contains endpoints. Dependencies are not endpoints. Putting
+  them there bloats the entry point and hides the reusable pieces.
+
+Two dependencies:
+
+**`get_current_user`**
+
+    def get_current_user(
+        credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+        db: Session = Depends(get_db),
+    ) -> models.User:
+        ...
+
+Steps performed on every authenticated request:
+
+1. Extract the Bearer token from the `Authorization` header.
+2. Decode and validate the JWT (signature, expiration).
+3. Read the user id from the token subject.
+4. Fetch the user from the database.
+5. Reject if the user does not exist or is inactive.
+
+Any failure raises HTTP 401 with a generic message. The client cannot
+distinguish between missing header, invalid signature, expired token,
+nonexistent user, or deactivated user.
+
+**Design note — `HTTPBearer(auto_error=False)`.** By default, `HTTPBearer`
+returns 403 when the `Authorization` header is absent. That is the wrong
+code: missing credentials is 401, not 403 (RFC 7235). With
+`auto_error=False` the scheme returns `None` and we raise 401 ourselves,
+keeping the error shape consistent with the rest of the authentication
+flow.
+
+**Design note — `is_active` rechecked on every request.** The dependency
+reads the user from the database on every authenticated call. This means
+deactivating a user takes effect immediately: their existing token stops
+working, even if it has not expired. This is the property that makes
+deactivation a usable response to an incident. Without it, a deactivated
+user would retain access for the remaining lifetime of their token (up to
+15 minutes).
+
+**`require_admin`**
+
+    def require_admin(user: models.User = Depends(get_current_user)) -> models.User:
+        if user.role != "admin":
+            raise HTTPException(status_code=403, ...)
+        return user
+
+Depends on `get_current_user`, so the full authentication flow runs first.
+If the user is authenticated but does not have the admin role, the response
+is **403 Forbidden**, not 401.
+
+The distinction matters:
+
+- **401** → the server does not know who the caller is
+- **403** — the server knows, but the caller is not allowed
+
+If 403 were returned as 401, the client would try to re-authenticate on
+every attempt — an infinite loop, because the token was valid. 403 tells
+the client to stop.
+
+### Endpoints updated
+
+| Endpoint                | Before          | After                          |
+|-------------------------|-----------------|--------------------------------|
+| `GET /`                 | Public          | Public (unchanged)             |
+| `GET /api/hello`        | Public          | Public (unchanged)             |
+| `GET /api/assets`       | Public          | Requires authentication        |
+| `POST /api/assets`      | Public          | Requires authentication        |
+| `POST /api/users`       | Public          | **Requires admin role**        |
+| `GET /api/users/me`     | Did not exist   | **New — authenticated**        |
+| `POST /api/auth/login`  | Public          | Public (unchanged)             |
+
+### The bootstrap problem
+
+In Session 1 (of the Phase 4 work), `POST /api/users` was unauthenticated
+so that a first user could be created. That was the bootstrap mechanism.
+
+This session **closes that door**: the endpoint now requires admin. The
+comment in the docstring records the reasoning, because "why is this
+endpoint suddenly locked?" is the sort of question that surfaces months
+later:
+
+    The bootstrap problem (creating the first admin when no user exists
+    yet) was solved manually during development — the endpoint was
+    unauthenticated for one session, and an admin user was created via
+    curl. After that, the endpoint was locked down.
+
+In a production system, the correct solution is not "leave it open for a
+while". It is one of:
+
+- A CLI command that creates the first admin: `python -m app.setup create-admin`
+- An environment variable seeded on first boot (`ADMIN_EMAIL`, `ADMIN_PASSWORD`)
+- A SQL seed file applied by the deployment process
+
+This is recorded so the shortcut is explicit and not repeated by accident.
+
+### Rate limiting at the Nginx edge
+
+Two zones were added at the top of the Nginx site config, outside any
+`server` block (this is required — zones are defined at the `http`
+level):
+
+    limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+    limit_req_zone $binary_remote_addr zone=api:10m   rate=60r/m;
+
+And two location blocks that use them:
+
+    location = /api/auth/login {
+        limit_req zone=login burst=3 nodelay;
+        limit_req_status 429;
+        ...
+    }
+
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        limit_req_status 429;
+        ...
+    }
+
+**Why two zones and not one.** A single rate cannot serve both purposes.
+A rate tuned for login (5 per minute) breaks normal usage (listing assets,
+fetching the user profile, submitting forms). A rate tuned for the
+application (60 per minute) allows a script to attempt thousands of
+password combinations per hour against the login endpoint. Differentiating
+them is what makes the control fit for purpose.
+
+**Why the exact-match location modifier.** `location = /api/auth/login`
+uses the exact-match operator (`=`). Without it, the login endpoint would
+fall under the prefix match `location /api/` and inherit the 60 r/m rate.
+The Nginx matching algorithm prefers the more specific match — this is
+what makes the stricter rate actually apply.
+
+**Why `limit_req_status 429`.** Nginx's default when a rate limit is
+exceeded is `503 Service Unavailable`. That code is misleading — the
+service is available, the client is sending too many requests. `429 Too
+Many Requests` is the correct code and is what was set.
+
+**Verification.** The login endpoint was probed with a loop of 10
+requests from a single client:
+
+    for i in $(seq 1 10); do
+      code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST https://192.168.1.173/api/auth/login \
+        -H "Content-Type: application/json" \
+        -d '{"email":"teste@example.com","password":"..."}')
+      echo "Pedido $i: $code"
+    done
+
+Observed result:
+
+    Pedido 1: 401    ← auth rejected by FastAPI, Nginx allowed
+    Pedido 2: 401
+    Pedido 3: 401
+    Pedido 4: 401
+    Pedido 5: 429    ← Nginx refused (limit + burst exhausted)
+    Pedido 6-10: 429
+
+The transition from 401 to 429 confirms the mechanism is working. The
+response body when the limit is hit is HTML (`<title>429 Too Many
+Requests</title>`) rather than JSON — this is the signature that the
+refusal came from Nginx, not from FastAPI. The request never reached the
+backend.
+
+**Known limitation — per-IP.** The limit is keyed by source IP. Behind
+NAT, multiple users share the same IP and therefore the same bucket. In
+the current lab each client has a distinct IP, so the limitation is
+theoretical. In a production deployment, additional application-level
+rate limiting keyed by authenticated user id would be necessary. This is
+recorded in the risk register as a known limitation, not a gap.
+
+### R-05 closed
+
+With rate limiting implemented and verified, R-05 (No rate limiting at any
+layer) was moved from §3 (Active risks) to §6 (Closed risks) in the risk
+register. The entry includes:
+
+- The configuration applied
+- Why two zones were used
+- The verification transcript
+- The known limitation (per-IP)
+- What was **not** implemented (`limit_conn_zone`), and why
+
+R-05 is the second risk closed, after R-01. Both followed the same cycle:
+identified → classified → treated → verified → documented with a commit
+reference.
+
+### Threat model updated
+
+Fourteen status markers were updated in `docs/threat-model.md` following
+the Phase 4 implementation.
+
+| Component | Threat                                 | Before       | After         |
+|-----------|----------------------------------------|--------------|---------------|
+| Nginx     | I2 — open read endpoints               | planned      | implemented   |
+| Nginx     | I3 — user enumeration at login         | planned      | implemented   |
+| FastAPI   | S1 — no client identity                | planned      | implemented   |
+| FastAPI   | S2 — `alg: none` JWT forgery           | planned      | implemented   |
+| FastAPI   | S3 — weak JWT signing key              | planned      | implemented   |
+| FastAPI   | S4 — JWT theft                         | planned      | **partial**   |
+| FastAPI   | T4 — JWT payload tampering             | planned      | implemented   |
+| FastAPI   | I1 — open read endpoints               | planned      | implemented   |
+| FastAPI   | E2 — IDOR                              | planned      | **partial**   |
+| FastAPI   | E3 — mass assignment on update         | planned      | implemented   |
+| FastAPI   | E4 — JWT role tampering                | planned      | implemented   |
+
+Two remain partially addressed:
+
+- **S4 (JWT theft)** — short-lived access tokens (15 min) and a strict CSP
+  are in place. Refresh tokens and `HttpOnly` cookies are not yet
+  implemented. Marking this "implemented" would be dishonest.
+- **E2 (IDOR)** — authentication exists, so the mechanism for IDOR now
+  exists. The deliberate test case (introduce, detect, fix) is planned for
+  Phase 7.
+
+The distinction between `[implemented]` and `[partial]` is the whole point
+of the status markers. A model that claims everything is done is a model
+that is not being used.
+
+### README updated
+
+The roadmap was corrected to reflect actual progress:
+
+- **Phase 4** — most items moved to `[x]`. Two remain open: JWT refresh
+  tokens, and tests covering auth flows.
+- **Phase 5** — six items moved to `[x]`; three remain open (Statement of
+  Applicability, vulnerability and patch management policy, simulated
+  incident exercise).
+
+This is not cosmetic. The README previously said "Phase 5 is all pending"
+when 75% of it had already been written. A roadmap that does not match
+reality is worse than no roadmap — it is a false claim.
+
+### Concepts learned
+
+- **401 and 403 are different responses to different questions.** 401 asks
+  "who are you?" — 403 says "I know who you are, you cannot do this". Code
+  that returns 401 when the real problem is authorisation sends the client
+  into a re-authentication loop that never resolves.
+- **`HTTPBearer` defaults to 403.** The FastAPI security utilities do not
+  always align with RFC 7235. Reading the defaults and overriding them
+  where they are wrong is part of understanding the framework, not
+  fighting it.
+- **Deactivation has to be rechecked on every request.** A dependency that
+  reads the user from the database on every call is slightly more
+  expensive than one that trusts the JWT claims — and it is the difference
+  between "deactivating a user takes effect now" and "takes effect in 15
+  minutes". The cost is small; the property is important.
+- **Rate limiting in Nginx requires attention to location matching.** The
+  general rule (`location /api/`) will shadow a specific endpoint unless
+  the specific one uses exact match (`location = ...`). Without that,
+  setting a stricter rate on login looks correct in the config and has no
+  effect.
+- **A response's format tells you who produced it.** HTML from Nginx;
+  JSON from FastAPI. Distinguishing them is the fastest way to know which
+  layer acted.
+- **Consistency between threat model, risk register, and README is the
+  product.** Each of the three documents was updated in this session.
+  Keeping them in sync is not bookkeeping; it is what makes them
+  trustworthy as a set.
+
+### Files changed
+
+- `backend/app/dependencies.py` — created (`get_current_user`, `require_admin`)
+- `backend/app/main.py` — endpoints protected; `GET /api/users/me` added;
+  `POST /api/users` restricted to admin
+- `deploy/nginx/secure-fullstack` — rate limiting zones and locations added
+- `docs/risk-register.md` — R-05 closed; §5 distribution updated
+- `docs/threat-model.md` — 14 status markers updated
+- `README.md` — Phase 4 and Phase 5 progress corrected
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `d30a1ba` | feat(auth): add get_current_user and require_admin dependencies |
+| `3a17149` | feat(nginx): add rate limiting for login and API endpoints      |
+| `cde2df6` | docs(risk-register): close R-05 after rate limiting implementation |
+| `cf5dcf3` | docs(threat-model): update status after Phase 4 implementation |
+| `2d12eec` | docs(readme): reflect actual Phase 4 and Phase 5 progress       |
+
+### Verification performed
+
+1. Login as `filipe@example.com` (admin) → JWT issued, length 161.
+2. Login as `joana@example.com` (user) → JWT issued, length 160.
+3. `GET /api/users/me` **without** token → 401.
+4. `GET /api/users/me` **with** `filipe`'s token → user object returned,
+   no `password_hash` in the response.
+5. `GET /api/assets` **without** token → 401.
+6. `GET /api/assets` **with** `filipe`'s token → list of 3 assets.
+7. `POST /api/users` **with** `filipe`'s token → 201, second user created
+   (`joana@example.com`, role `user`).
+8. `POST /api/users` **with** `joana`'s token → **403 Forbidden**, confirming
+   the RBAC check.
+9. Loop of 10 login attempts → transition from 401 to 429 at request 5,
+   confirming rate limiting at the Nginx edge.
+
+All nine passed as expected.
+
+### Next step — remaining Phase 4 items
+
+- **JWT refresh tokens.** A second token type with a longer lifetime,
+  issued alongside the access token. Allows the client to obtain a new
+  access token without asking the user to log in again, while keeping the
+  access token lifetime short.
+- **Tests covering auth flows.** At minimum: login success, login
+  failure, protected endpoint without token (401), protected endpoint
+  with wrong role (403), token expiry. These will run in the CI pipeline
+  in Phase 6.
+
+Only after these are complete does the Phase 4 checkbox in the README
+close fully.
