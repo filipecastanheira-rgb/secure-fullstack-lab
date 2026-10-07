@@ -112,9 +112,9 @@ The gap list (§10) is the input to the risk register.
                   │   FastAPI  :8000     │   [implemented]
                   │   • REST API         │
                   │   • Pydantic schemas │
-                  │   • JWT auth         │   [planned: phase 4]
-                  │   • RBAC             │   [planned: phase 4]
-                  │   • rate limiting    │   [planned: phase 4]
+                  │   • JWT auth         │   [implemented]
+                  │   • RBAC             │   [implemented]
+                  │   • rate limiting    │   [implemented]
                   └──────────┬───────────┘
                              │
                              │ SQLAlchemy
@@ -551,13 +551,13 @@ the one that applies.
 
 **I2. No authentication on API endpoints.**
 Any client on the lab network can list and create assets.
-*Status:* `[planned: phase 4]` — see the FastAPI analysis below.
+*Status:* `[implemented]` — all API endpoints now require a valid JWT.
 
 **I3. User enumeration at the login endpoint.**
 Once authentication exists, a login endpoint that distinguishes "user does
 not exist" from "wrong password" allows an attacker to enumerate valid
 accounts.
-*Status:* `[planned: phase 4]` — error messages must be generic.
+*Status:* `[implemented]` — the login endpoint returns a generic "Invalid email or password" for all failure cases, preventing user enumeration.
 
 #### D — Denial of service
 
@@ -607,7 +607,7 @@ equally trustworthy. This is not a spoofing *vulnerability* — it is the
 absence of any identity to spoof.
 *Scenario:* a client on the lab network calls any endpoint with no
 credential, and the API treats the call as legitimate.
-*Status:* `[planned: phase 4]` — the whole point of authentication.
+*Status:* `[implemented]` — JWT-based authentication is in place.
 
 **S2. JWT forgery — `alg: none` (future).**
 Once JWT is introduced, a misconfigured server may accept a token whose
@@ -616,20 +616,17 @@ token that is accepted.
 *Scenario:* attacker intercepts their own JWT, changes the payload to
 `{"sub": "admin"}`, removes the signature, changes the header to `none`,
 and sends it.
-*Status:* `[planned: phase 4]` — the implementation must force a specific
-algorithm on the server side and never trust the header.
+*Status:* `[implemented]` — the implementation explicitly passes `algorithms=["HS256"]` to `jwt.decode()`, closing the `alg: none` vector.
 
 **S3. JWT forgery — weak signing key (future).**
 If the signing key is short or guessable, the attacker can compute a valid
 signature for any payload.
-*Status:* `[planned: phase 4]` — key must be a long, random secret, kept
-outside the source tree.
+*Status:* `[implemented]` — the key is 64 bytes from `secrets.token_urlsafe`, stored in `backend/.jwt_secret` (mode `0600`, gitignored).
 
 **S4. JWT theft (future).**
 If an attacker can read the token from the browser (XSS, shared device,
 log leakage), they can impersonate the user until the token expires.
-*Status:* `[planned: phase 4]` — mitigations: short-lived access tokens,
-refresh tokens, `HttpOnly` cookies, and a strict CSP (already in place).
+*Status:* `[partial]` — short-lived access tokens (15 min) are in place, along with a strict CSP. Refresh tokens and `HttpOnly` cookies are not yet implemented.
 
 #### T — Tampering
 
@@ -657,7 +654,7 @@ deliberate test case.
 **T4. JWT payload tampering (future).**
 If the server does not verify the signature, an attacker can change
 `role: user` to `role: admin` in the payload.
-*Status:* `[planned: phase 4]` — signature verification is non-negotiable.
+*Status:* `[implemented]` — the signature is verified in `decode_token`; any payload change invalidates it.
 
 #### R — Repudiation
 
@@ -681,7 +678,7 @@ To support non-repudiation, each security-relevant event must capture:
 
 **I1. Open read endpoints.**
 `GET /api/assets` returns the full list to anyone who asks.
-*Status:* `[planned: phase 4]`
+*Status:* `[implemented]` — endpoints require a valid JWT.
 
 **I2. Verbose validation errors.**
 Pydantic's 422 responses describe the exact schema, including field names,
@@ -731,18 +728,17 @@ Once objects belong to users, an endpoint like `GET /api/assets/{id}` must
 verify ownership, not just existence.
 *Scenario:* user A requests `/api/assets/42`, which belongs to user B. If
 the endpoint only filters by ID, user A reads user B's data.
-*Status:* `[planned: phase 4 and phase 7]` — will be deliberately
-introduced in Phase 7 to demonstrate detection and fix.
+*Status:* `[partial: phase 7]` — authentication exists; the IDOR test will be introduced in Phase 7 to demonstrate detection and fix.
 
 **E3. Mass assignment on update (future).**
 A permissive update schema could allow a user to set fields they should
 not control (e.g. `role`, `owner_id`).
-*Status:* `[planned: phase 4]`
+*Status:* `[implemented]` — `UserCreate` restricts `role` to `Literal["user", "admin"]`; Pydantic ignores undeclared fields.
 
 **E4. JWT role tampering (future).**
 Same as T4, from the privilege perspective: a forged token with an elevated
 role grants elevated access.
-*Status:* `[planned: phase 4]`
+*Status:* `[implemented]` — signature verification prevents payload tampering.
 
 ---
 
