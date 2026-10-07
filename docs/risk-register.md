@@ -177,22 +177,6 @@ action, the operator follows these steps in order:
 convenience. It will be moved to the incident-response playbook once that
 document exists, with a reference back to this entry.
 
-
-
-### R-05 — No rate limiting at any layer
-
-| Field        | Value |
-|--------------|-------|
-| Source       | Threat model §7.1 (D1) and §7.2 (D1) |
-| Description  | Neither Nginx nor the FastAPI application implements rate limiting. Any client can send unlimited requests. A simple loop saturates the backend within seconds. |
-| Likelihood   | **3** — requires an attacker on the lab network, but any attacker with access to the endpoint will attempt resource exhaustion as a first step. |
-| Impact       | **3** — availability loss, contained. The host can be restarted, and the lab is not a production service. Impact will rise once authentication is added and login endpoints become the target of credential brute force. |
-| Severity     | **Medium (9)** |
-| Treatment    | **Mitigate** |
-| Control      | (1) Add `limit_req_zone` and `limit_conn_zone` in Nginx at the edge. (2) Add per-endpoint limits for authentication endpoints in the application, once they exist. |
-| Phase        | Phase 4 (authentication) for the login endpoints; Phase 6 (pipeline) for the Nginx configuration. |
-| Residual     | **Low (4)** — the attack surface is reduced and the cost of abuse is raised significantly. Distributed attacks remain possible but out of scope for a lab. |
-
 ### R-06 — SSH sessions are not recorded
 
 | Field        | Value |
@@ -258,22 +242,22 @@ Recognised practices that are **not applied** in this context, with rationale. N
 
 ## 5. Risk distribution
 
-Snapshot of the register as of **2026-10-05**, after R-01 closure.
+Snapshot of the register as of **2026-10-07**, after R-01 and R-05 closure.
 
 ### Current state
 
 | Severity  | Active | Closed | Accepted |
 |-----------|--------|--------|----------|
 | Critical  | 0      | 0      | 0        |
-| High      | 3      | 1      | 0        |
-| Medium    | 3      | 0      | 0        |
-| Low       | 0      | 0      | 0        |
+| High      | 3      | 0      | 0        |
+| Medium    | 2      | 1      | 0        |
+| Low       | 1      | 0      | 0        |
 | Accepted  | —      | —      | 5        |
 
 **Active risks:** R-02 (High), R-03 (High), R-04 (Low, during
-development), R-05 (Medium), R-06 (Medium), R-07 (Medium).
+development), R-06 (Medium), R-07 (Medium).
 
-**Closed risks:** R-01.
+**Closed risks:** R-01, R-05.
 
 **Accepted risks:** AR-01 to AR-05.
 
@@ -285,24 +269,29 @@ Once every active risk is treated as planned:
 |-----------|--------|----------|
 | Critical  | 0      | 0        |
 | High      | 3      | 0        |
-| Medium    | 3      | 0        |
-| Low       | 0      | 6        |
+| Medium    | 2      | 0        |
+| Low       | 1      | 5        |
 
 Every active risk has a treatment plan that reduces it to Low. No risk
 is left untreated at High or Medium severity after the roadmap completes.
 
 ### Observations
 
+- **Two risks closed so far.** R-01 (loopback binding) and R-05 (rate
+  limiting). Both followed the same pattern: identified in the threat
+  model, classified in the register, treated, verified with evidence, and
+  moved to §6 with the commit reference.
 - **The gap between current and residual is the roadmap.** Each remaining
-  phase (4, 9, 10, 12) closes one or more risks. The register makes that
-  mapping explicit so progress is measurable, not impressionistic.
-- **R-01 is the first risk closed.** It demonstrates the full cycle:
-  identified in the threat model, classified here, treated, verified, and
-  recorded with evidence. Subsequent closures follow the same format.
+  phase (4 finalization, 8, 9, 10, 12) closes one or more risks. The
+  register makes the mapping explicit so progress is measurable.
+- **Closure is not deletion.** A closed risk stays in §6 with its full
+  history. The entry is a permanent record that the risk existed, was
+  assessed, and was resolved. The identifier (R-01, R-05) is never reused.
 - **Accepted risks do not change** with the roadmap. They were accepted
-  by design, and their rationale stands (see §4.1). If the context changes
-  — for example, if the lab is ever exposed to the Internet — the
-  acceptance is revisited.
+  by design, and their rationale stands (see §4.1). If the context
+  changes — for example, if the lab is ever exposed to the Internet —
+  the acceptance is revisited.
+
 ---
 
 ## 6. Closed risks
@@ -359,6 +348,99 @@ network interface. The defence no longer depends on a single layer.
   remains valid — it is the origin of this risk, and is preserved for
   traceability.
 ---
+
+
+### R-05 — No rate limiting at any layer
+
+| Field        | Value |
+|--------------|-------|
+| Original severity | Medium (9) |
+| Residual     | **Low (3)** — the login endpoint is protected at the edge; abuse cost is significantly higher |
+| Closed on    | 2026-10-07 |
+| Commits      | `d30a1ba` (auth dependencies), `3a17149` (Nginx rate limiting) |
+
+**Control implemented.**
+
+Rate limiting was added at the Nginx edge, in two distinct zones:
+
+    limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+    limit_req_zone $binary_remote_addr zone=api:10m   rate=60r/m;
+
+- **`login`** — 5 requests per minute, burst of 3. Applied to a
+  `location = /api/auth/login` block with exact-match semantics, so it
+  is not shadowed by the broader `/api/` location.
+- **`api`** — 60 requests per minute, burst of 20. Applied to all other
+  `/api/` endpoints.
+
+Both zones use `limit_req_status 429` so that exceeded limits return
+`429 Too Many Requests` instead of the Nginx default `503`.
+
+**Why two zones and not one.**
+
+A single zone cannot serve both purposes. A rate tuned for login (5 per
+minute) would break normal application usage (listing assets, fetching
+the current user, submitting forms). A rate tuned for the application
+(60 per minute) would allow a script to attempt thousands of password
+combinations per hour against the login endpoint. Differentiating the
+two is what makes the control fit for purpose.
+
+**Why the exact-match location matters.**
+
+Nginx matches locations by specificity: the more specific prefix wins.
+`location = /api/auth/login` is an exact match and takes precedence over
+`location /api/`. Without the exact-match modifier, the login endpoint
+would fall under the general `api` zone and inherit the 60r/m rate —
+which would defeat the purpose of the stricter zone.
+
+**Verification.**
+
+The login endpoint was probed with a loop of 10 requests from a single
+client:
+
+    for i in $(seq 1 10); do
+      curl -s -o /dev/null -w "%{http_code}" \
+        -X POST https://192.168.1.173/api/auth/login \
+        -H "Content-Type: application/json" \
+        -d '{"email":"teste@example.com","password":"..."}'
+    done
+
+Observed result:
+
+    Pedido 1: 401    ← authentication rejected by FastAPI, Nginx allowed
+    Pedido 2: 401
+    Pedido 3: 401
+    Pedido 4: 401
+    Pedido 5: 429    ← Nginx refused (rate limit + burst exhausted)
+    Pedido 6: 429
+    ... (429 for remaining requests)
+
+The transition from 401 to 429 confirms that:
+
+1. The rate bucket is keyed by client IP and counts correctly.
+2. The burst allowance is exhausted before blocking begins.
+3. Requests are refused with `429`, not delayed (via `nodelay`).
+4. The refusal is generated by Nginx (response body is HTML), not by the
+   FastAPI application (which would return JSON). The request never
+   reaches the backend.
+
+**Post-closure notes.**
+
+- **Per-IP limitation.** The rate limit is applied per source IP. Behind
+  NAT, multiple legitimate users share the same IP and would share the
+  same bucket. In the current lab, each client has a distinct IP, so the
+  limitation is theoretical. In a production deployment, additional
+  application-level rate limiting keyed by authenticated user id would be
+  necessary. This is recorded as a known limitation, not a gap — the
+  network-level control is doing what it should.
+- **Distributed attacks remain out of scope.** A botnet with many IPs
+  could distribute the load and stay under the limit per IP. Mitigating
+  that requires infrastructure beyond the scope of this lab (CDN with
+  global rate limiting, or a WAF).
+- **`limit_conn_zone` not used.** The original control description also
+  mentioned connection limits. Only request limits were implemented,
+  because connection exhaustion is addressed at the TCP level by the
+  Nginx worker configuration and by UFW. Reconsidered if evidence of
+  connection-level abuse appears.
 
 ## 7. Revision history
 
