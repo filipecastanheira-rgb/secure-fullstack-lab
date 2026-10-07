@@ -1,4 +1,21 @@
 # =============================================================================
+# Rate limiting zones
+# These MUST be defined at the http level (outside any server block),
+# which is why they are at the top of this file before the first `server`.
+# =============================================================================
+
+# Bucket for the login endpoint. Keyed by client IP.
+# 5 requests per minute is generous for a human (who tries 1-2 times),
+# and punishing for a script (100k passwords would take ~14 days).
+limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+
+# Bucket for the rest of the API. More permissive because normal
+# application usage (page loads, asset lists, form submissions) generates
+# more legitimate traffic.
+limit_req_zone $binary_remote_addr zone=api:10m rate=60r/m;
+
+
+# =============================================================================
 # HTTP — everything gets redirected to HTTPS.
 # No content is served over plain HTTP anymore.
 # =============================================================================
@@ -7,7 +24,6 @@ server {
     listen [::]:80;
     server_name 192.168.1.173;
 
-    # Preserve the path and query string when redirecting.
     return 301 https://$host$request_uri;
 }
 
@@ -31,24 +47,11 @@ server {
     ssl_session_tickets off;
 
     # --- Security headers ---
-    # HSTS: browsers will only use HTTPS for this host for the next year.
-    # includeSubDomains: covered. preload: omitted (only for public sites).
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # Prevent the page from being embedded in an iframe (clickjacking).
     add_header X-Frame-Options "DENY" always;
-
-    # Stop the browser from guessing the content type — a classic XSS vector.
     add_header X-Content-Type-Options "nosniff" always;
-
-    # Limit what the browser sends in the Referer header to other sites.
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    # Disable browser features we don't use (geolocation, camera, mic, ...).
     add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
-
-    # Content Security Policy — what the browser is allowed to load.
-    # 'self' = only from this same origin. No external scripts, no inline.
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
     # --- Static content ---
@@ -58,8 +61,26 @@ server {
     access_log /var/log/nginx/secure-fullstack.access.log;
     error_log  /var/log/nginx/secure-fullstack.error.log;
 
-    # --- API reverse proxy ---
+    # --- Authentication endpoints: strict rate limit ---
+    # Must come before the generic /api/ location, otherwise it would be
+    # shadowed by it (Nginx matches the most specific prefix first).
+    location = /api/auth/login {
+        limit_req zone=login burst=3 nodelay;
+        limit_req_status 429;
+
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # --- API: general rate limit ---
     location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        limit_req_status 429;
+
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
