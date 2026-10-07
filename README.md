@@ -159,22 +159,24 @@ in exactly two places:
 
 ### Phase 4 — Authentication and authorisation
 
-- [ ] User model with argon2 password hashing
-- [ ] JWT authentication (login, refresh)
-- [ ] Role-based access control (at least two roles)
-- [ ] Rate limiting on authentication endpoints
+- [x] User model with argon2id password hashing
+- [x] JWT authentication (login endpoint)
+- [ ] JWT refresh tokens
+- [x] Role-based access control (two roles: user, admin)
+- [x] Rate limiting on authentication endpoints (Nginx, per-IP)
 - [ ] Tests covering auth flows
 
 ### Phase 5 — Threat model and GRC
 
-- [ ] Asset inventory and trust boundaries
-- [ ] STRIDE analysis with prioritised threats
-- [ ] Risk register (likelihood, impact, treatment, residual risk)
+- [x] Asset inventory and trust boundaries
+- [x] STRIDE analysis with prioritised threats
+- [x] Risk register (likelihood, impact, treatment, residual risk)
+- [x] Password policy with NIST-aligned rotation
+- [x] Incident response playbook (5 scenarios, NIST SP 800-61)
+- [x] Control mapping (OWASP Top 10, ASVS, ISO 27001, NIS2)
 - [ ] Simplified Statement of Applicability
 - [ ] Vulnerability and patch management policy
-- [ ] Incident response playbook
 - [ ] Simulated incident exercise with post-mortem
-- [ ] Control mapping (OWASP Top 10 / ASVS, ISO 27001 Annex A, NIS2)
 
 ### Phase 6 — Security pipeline (CI/CD)
 
