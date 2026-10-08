@@ -2079,3 +2079,304 @@ All nine passed as expected.
 
 Only after these are complete does the Phase 4 checkbox in the README
 close fully.
+
+---
+
+## Session 15 — Refresh tokens and Phase 5 closure
+
+**Goal:** complete the last remaining item of Phase 4 (refresh tokens),
+then close Phase 5 by producing the three remaining GRC documents:
+Statement of Applicability, vulnerability management policy, and a
+simulated incident exercise with post-mortem.
+
+The session produced four documents and two code changes, and marked two
+phases of the roadmap as complete.
+
+### Part 1 — Refresh tokens
+
+The access token issued by the login endpoint expires after 15 minutes.
+This is correct for security: if it is stolen, its usefulness is limited.
+It is inconvenient for the user, who would have to re-authenticate every
+15 minutes.
+
+Refresh tokens resolve that tension: a second, longer-lived token whose
+only purpose is to obtain new access tokens without asking the user to
+log in again.
+
+**Design — type separation.** Both tokens are JWTs signed with the same
+secret. Without a distinguishing claim, a stolen refresh token could be
+presented as an access token, and the two-token model would collapse into
+a single long-lived token. The solution is a `type` claim in the payload:
+
+    {"sub": "1", "role": "admin", "type": "access",  "exp": ...}
+    {"sub": "1", "role": "admin", "type": "refresh", "exp": ...}
+
+- `get_current_user` calls `decode_token_of_type(..., "access")`
+- `POST /api/auth/refresh` calls `decode_token_of_type(..., "refresh")`
+
+A token with the wrong `type` is rejected even if the signature is valid.
+This was verified with two explicit tests (access→refresh and
+refresh→access), both returning 401.
+
+**Refresh token rotation.** The `/api/auth/refresh` endpoint returns a
+**new pair** of tokens, not just a new access token. This is the safer
+behaviour: a leaked refresh token stops being valid the next time the
+legitimate client refreshes. Without rotation, a stolen refresh token
+remains usable for its full seven-day lifetime.
+
+**Known limitation.** This implementation does not track revoked refresh
+tokens. A leaked refresh token that has not been used since the leak
+remains valid until the next legitimate refresh replaces it. A full
+revocation scheme (a token version counter per user, or a persistent
+denylist) is a future improvement, recorded in the docstring and in this
+journal.
+
+### Part 2 — Test suite
+
+19 tests covering:
+
+- Login success, wrong password, non-existent email, inactive user
+- User enumeration prevention (same response for all three failure cases)
+- Protected endpoints without token, with malformed token, with valid token
+- `/api/users/me` returns the correct user, and does not expose the hash
+- RBAC: admin can create users, regular user receives 403, anonymous 401
+- Duplicate email returns 409
+- Assets endpoint requires authentication
+- Login returns both tokens
+- Refresh works with a refresh token, and rejects an access token
+- Protected endpoints reject a refresh token
+
+The suite runs in ~20 seconds against a fresh in-memory database. The
+real `lab.db` is never touched.
+
+**Infrastructure.** `conftest.py` defines the fixtures:
+
+- `db_session` — a fresh in-memory SQLite, created per test
+- `client` — a `TestClient` with `get_db` overridden to use the test database
+- `test_admin`, `test_user` — users with the corresponding roles
+- `admin_token`, `user_token` — tokens obtained by calling the real login
+  endpoint (not by minting tokens directly). Using the real endpoint means
+  the fixtures exercise the same code path the client would, so a broken
+  login flow fails tests immediately.
+
+**Why `StaticPool`.** SQLite in-memory creates a distinct database per
+connection. Without `StaticPool`, tables created on one connection would
+not be visible to another, and every test would fail with "no such table".
+The pool forces a single connection for the engine.
+
+**Why the `with TestClient(app)` context.** Using `TestClient` without the
+context manager does not trigger the FastAPI `lifespan`, so `create_all`
+never runs and the tables do not exist. The context manager fixes that.
+
+### Part 3 — Statement of Applicability
+
+`docs/statement-of-applicability.md` (210 lines).
+
+The SoA is a mandatory artefact under ISO 27001:2022 clause 6.1.3(d).
+It records, for every control in Annex A:
+
+- Whether the control is applicable
+- Whether it is implemented, partial, or planned
+- The justification for the applicability decision
+
+**Format choice.** The full Annex A has 93 controls. Listing every one
+individually would duplicate `docs/control-mapping.md`. Instead, the SoA
+references the control-mapping for detail, and adds:
+
+- Decision criteria for applicability
+- Summary by theme (Organizational / People / Physical / Technological)
+- Justification for the non-applicable categories
+- Cross-references to the risk register for accepted/deferred controls
+
+**Numbers.** 56 of 93 controls are applicable to this environment (~60%).
+The 37 excluded are grouped by category, with rationale per category.
+
+**Why "not applicable" is not a gap.** A control whose asset, role, or
+activity does not exist in this environment is not missing — it is
+irrelevant. The SoA records *why*, which is what an auditor checks.
+
+### Part 4 — Vulnerability management policy
+
+`docs/vulnerability-management-policy.md` (238 lines).
+
+The policy defines how vulnerabilities in the lab's components are
+identified, assessed, remediated, and verified.
+
+**Key provisions:**
+
+- **Multiple sources.** Dependabot, `pip-audit`, `npm audit`, Ubuntu
+  Security Notices, Bandit, Trivy, GitHub Advisories. No single source
+  is trusted to be complete.
+- **Severity SLAs.** Critical 7 days, High 14 days, Medium 30 days, Low
+  90 days. Measured from the moment the vulnerability is confirmed
+  applicable, not from CVE publication.
+- **Context adjustment.** CVSS is the starting point, not the conclusion.
+  Severity may be adjusted up or down based on reachability, exposure,
+  and environmental controls — with the rationale recorded. An
+  adjustment without justification is itself a finding.
+- **Exceptions are first-class.** A known, applicable, non-remediated
+  vulnerability must be recorded with a reason, a compensating control,
+  and a review date. Exceptions older than six months are treated as a
+  finding in the annual review.
+- **Verification of the policy itself.** Monthly metrics — number of
+  open findings, number of exceptions, time since last OS update, time
+  since last scan. A policy without metrics is a declaration of intent.
+
+**Current state.** Only the manual sources are active. The automated
+sources arrive in Phase 6 (CI/CD) and Phase 12 (Dependabot). This is
+recorded explicitly — a document that claims capabilities that do not
+exist is worse than one that records the truth.
+
+### Part 5 — Simulated incident exercise
+
+`docs/simulated-incident-exercise.md` (317 lines).
+
+This is the first time a playbook from `docs/incident-response.md` was
+**exercised** rather than written. A simulation was executed against the
+lab, evidence was collected, and a full post-mortem was produced.
+
+**Scenario.** A scripted sequence of 20 login attempts with wrong
+passwords, sent from the Kali VM to `/api/auth/login`.
+
+**Result.**
+
+    401 401 401 401
+    429 429 429 429 429 429 429 429 429 429
+    429 429 429 429 429 429
+
+Four requests reached the backend (401, rejected by FastAPI); sixteen
+were refused at the Nginx edge (429). Total wall-clock time: three
+seconds.
+
+**What this proved:**
+
+- **Prevention worked.** The rate limit was reached after four requests.
+  The attacker is capped at a fixed cost per unit of time.
+- **Resource cost was bounded.** Each backend login attempt consumes
+  ~64 MB of RAM for argon2id hashing. Four attempts → ~256 MB. Twenty
+  attempts → ~1.28 GB. The rate limiter reduces the resource cost of the
+  attack by a factor of five.
+- **User enumeration prevention held.** All four rejected attempts
+  returned the same generic message, even though the attacker was
+  targeting a non-existent account.
+- **Logs told the whole story.** The complete attack can be reconstructed
+  from the Nginx access log: origin IP, time window, request cadence,
+  user-agent, and where each request was rejected (visible as the change
+  in body size from 39 to 178 bytes).
+
+**The finding — detection was not automatic.**
+
+The attack was only noticed because the operator ran a manual `grep`
+against the log afterwards. Nothing raised an alert when the rate limiter
+began rejecting requests.
+
+This is what the exercise exists to find. A prevention control that acts
+silently is half a control: it stops the attack, but leaves the operator
+blind to the fact that an attack occurred. In a production environment
+with 24/7 operations, an unnoticed brute-force attempt is a serious
+detection gap.
+
+**Action items produced:**
+
+1. Add an alert when the rate limiter begins rejecting requests
+2. Configure structured logging (JSON) on the FastAPI side
+3. Add threshold-based alerting for repeated failures per IP
+4. (Future) Consider a full SIEM (already recorded as DP-05)
+
+All three immediate items are scheduled for Phase 8.
+
+**Cross-references updated.** The finding confirms what was already
+recorded as R-06 (no audit trail) and in the control mapping for A.8.15
+and A.8.16. No new risk entry was needed.
+
+### Phase 5 — complete
+
+With these three documents, Phase 5 is closed:
+
+| Document                              | Lines | Purpose                              |
+|---------------------------------------|-------|--------------------------------------|
+| `docs/threat-model.md`                | ~1200 | STRIDE analysis of six components    |
+| `docs/risk-register.md`               | ~800  | Active, closed, accepted, deferred   |
+| `docs/password-policy.md`             | ~360  | Two-speed rotation, NIST-aligned     |
+| `docs/incident-response.md`           | ~667  | Five playbooks, NIST SP 800-61       |
+| `docs/control-mapping.md`             | ~428  | OWASP, ASVS, ISO 27001, NIS2         |
+| `docs/statement-of-applicability.md`  | ~210  | ISO 27001 Annex A applicability      |
+| `docs/vulnerability-management-policy.md` | ~238 | Identify, assess, remediate, verify |
+| `docs/simulated-incident-exercise.md` | ~317  | Post-mortem with real evidence       |
+
+**Total: roughly 4,200 lines of GRC documentation**, each traceable to a
+recognised standard and cross-referenced to the others.
+
+### Concepts learned
+
+- **Type claims are what keep two-token models honest.** Without a `type`
+  field in the payload, an access token and a refresh token are
+  indistinguishable and the model collapses. The check is one line; the
+  missing check is a complete rewrite of the security property.
+- **Refresh rotation is safer than static refresh.** A refresh token that
+  never changes remains usable for its full lifetime if leaked. Returning
+  a new refresh token on every use bounds the exposure to the interval
+  between the leak and the next legitimate refresh.
+- **Test fixtures should exercise real code paths.** The `admin_token`
+  fixture calls the login endpoint rather than minting a token directly.
+  The cost is a few extra milliseconds; the benefit is that a broken
+  login flow fails every test at once, instead of passing tests that
+  silently bypass authentication.
+- **Statement of Applicability is a decision document, not a checklist.**
+  The value is not in the list of controls; it is in the justification
+  for the ones that are not applied. An auditor reads the justifications.
+- **A policy without metrics is a declaration of intent.** Adding
+  measurement to the vulnerability policy is what makes it possible to
+  tell, three months later, whether it is being followed.
+- **Exercising a playbook is different from writing one.** The simulation
+  revealed a detection gap that no amount of documentation would have
+  surfaced. The evidence — the actual log — is what made the finding
+  undeniable.
+- **Controls that work silently leave the operator blind.** Rate limiting
+  stops the attack; it does not announce it. Prevention and detection are
+  separate requirements and neither substitutes the other.
+
+### Files changed
+
+- `backend/app/security.py` — refresh token creation and type-checked decode
+- `backend/app/dependencies.py` — requires `type == "access"`
+- `backend/app/schemas.py` — `TokenResponse.refresh_token`, `RefreshRequest`
+- `backend/app/main.py` — login returns both tokens; `/api/auth/refresh` added
+- `backend/tests/test_auth.py` — 4 new tests for refresh flow
+- `backend/requirements.txt` — pytest and httpx added
+- `backend/pytest.ini` — created
+- `backend/tests/__init__.py`, `conftest.py` — created
+- `docs/statement-of-applicability.md` — created
+- `docs/vulnerability-management-policy.md` — created
+- `docs/simulated-incident-exercise.md` — created
+- `README.md` — Phases 4 and 5 marked complete
+
+### Commits this session
+
+| Commit  | Description                                                              |
+|---------|--------------------------------------------------------------------------|
+| `2f861b4` | test(auth): add pytest suite covering login, RBAC, and protected endpoints |
+| `3fd3ea2` | feat(auth): add JWT refresh tokens with type separation                  |
+| `8600392` | docs(readme): mark Phase 4 as complete                                   |
+| `8fafa23` | docs(grc): add SoA, vulnerability management policy, and incident exercise |
+| *(pending)* | docs(readme): mark Phase 5 as complete                                |
+
+### Next step
+
+Phase 6 — Security pipeline (CI/CD). A GitHub Actions workflow triggered
+on push, running:
+
+- **Lint:** ruff (Python), eslint (JS)
+- **Tests:** pytest
+- **SAST:** Bandit
+- **SCA:** pip-audit, npm audit
+- **Secrets scanning:** gitleaks
+- **DAST:** OWASP ZAP baseline against the running lab
+
+The report artefacts become evidence of the pipeline's behaviour, and
+the pipeline itself becomes the mechanism that keeps the tests running.
+
+The vulnerability management policy written in this session depends on
+Phase 6 for its automated sources. The two phases are connected: the
+policy describes what should happen, and the pipeline is what makes it
+happen without manual intervention.
