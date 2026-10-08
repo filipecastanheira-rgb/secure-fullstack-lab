@@ -166,7 +166,7 @@ in exactly two places:
 - [x] Rate limiting on authentication endpoints (Nginx, per-IP)
 - [x] Tests covering auth flows (19 pytest tests)
 
-### Phase 5 — Threat model and GRC
+### Phase 5 — Threat model and GRC (complete)
 
 - [x] Asset inventory and trust boundaries
 - [x] STRIDE analysis with prioritised threats
@@ -174,9 +174,9 @@ in exactly two places:
 - [x] Password policy with NIST-aligned rotation
 - [x] Incident response playbook (5 scenarios, NIST SP 800-61)
 - [x] Control mapping (OWASP Top 10, ASVS, ISO 27001, NIS2)
-- [ ] Simplified Statement of Applicability
-- [ ] Vulnerability and patch management policy
-- [ ] Simulated incident exercise with post-mortem
+- [x] Statement of Applicability (ISO 27001 Annex A, simplified)
+- [x] Vulnerability and patch management policy
+- [x] Simulated incident exercise with post-mortem
 
 ### Phase 6 — Security pipeline (CI/CD)
 
