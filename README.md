@@ -157,14 +157,14 @@ in exactly two places:
 - [x] Fail2Ban with custom SSH filter
 - [x] Configuration versioned in `deploy/hardening/`
 
-### Phase 4 — Authentication and authorisation
+### Phase 4 — Authentication and authorisation (complete)
 
 - [x] User model with argon2id password hashing
 - [x] JWT authentication (login endpoint)
-- [ ] JWT refresh tokens
+- [x] JWT refresh tokens with type separation (access vs refresh)
 - [x] Role-based access control (two roles: user, admin)
 - [x] Rate limiting on authentication endpoints (Nginx, per-IP)
-- [ ] Tests covering auth flows
+- [x] Tests covering auth flows (19 pytest tests)
 
 ### Phase 5 — Threat model and GRC
 
