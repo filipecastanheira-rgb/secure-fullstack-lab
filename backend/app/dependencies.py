@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import get_db
-from app.security import decode_token
+from app.security import decode_token_of_type
 
 
 # HTTPBearer extracts the token from the "Authorization: Bearer <token>"
@@ -42,15 +42,19 @@ def get_current_user(
 
     Steps:
     1. Extract the Bearer token from the Authorization header.
-    2. Decode and validate the JWT (signature, expiration).
+    2. Decode and validate the JWT, requiring type == "access".
     3. Read the user id from the token subject.
     4. Fetch the user from the database.
     5. Reject if the user does not exist or is inactive.
 
+    Requiring type == "access" is what prevents a refresh token (which is
+    longer-lived and meant only for the /api/auth/refresh endpoint) from
+    being used here. Without that check, a stolen refresh token would be
+    accepted as an access token and the two-token model would be useless.
+
     Any failure raises HTTP 401 with a generic message. The client cannot
     distinguish between "missing header", "invalid signature", "expired",
-    "user does not exist", or "user is inactive". This prevents
-    enumeration of user ids and account states.
+    "wrong token type", "user does not exist", or "user is inactive".
     """
     _unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -61,7 +65,7 @@ def get_current_user(
     if credentials is None:
         raise _unauthorized
 
-    payload = decode_token(credentials.credentials)
+    payload = decode_token_of_type(credentials.credentials, "access")
 
     subject = payload.get("sub")
     if subject is None:

@@ -3,7 +3,7 @@ Security primitives for the Secure Fullstack Lab.
 
 This module centralises:
 - password hashing and verification (argon2id)
-- JWT creation and validation
+- JWT creation and validation (access tokens and refresh tokens)
 
 Keeping all cryptographic operations here means:
 - the algorithm and parameters are defined in exactly one place;
@@ -78,6 +78,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 _JWT_SECRET_FILE = Path(__file__).parent.parent / ".jwt_secret"
 _JWT_ALGORITHM = "HS256"
 _ACCESS_TOKEN_EXPIRES_MINUTES = 15
+_REFRESH_TOKEN_EXPIRES_DAYS = 7
 
 
 def _load_or_create_jwt_secret() -> str:
@@ -109,25 +110,56 @@ def create_access_token(subject: str, role: str) -> str:
 
     The token expires in 15 minutes. Short lifetimes are the standard
     mitigation for the fact that JWTs cannot be revoked before they expire.
+
+    The `type` claim is set to "access" so that this token cannot be used
+    where a refresh token is required (and vice versa).
     """
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
         "role": role,
+        "type": "access",
         "iat": now,
         "exp": now + timedelta(minutes=_ACCESS_TOKEN_EXPIRES_MINUTES),
     }
     return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
 
 
+def create_refresh_token(subject: str, role: str) -> str:
+    """
+    Create a signed JWT refresh token.
+
+    A refresh token is longer-lived than an access token (7 days vs 15
+    minutes) and exists solely to obtain new access tokens without asking
+    the user to log in again.
+
+    It carries a `type` claim set to "refresh", which the access-token
+    verification path explicitly rejects. Without that claim, a stolen
+    refresh token would work as an access token, and the two-token model
+    would collapse into a single, longer-lived one.
+    """
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": subject,
+        "role": role,
+        "type": "refresh",
+        "iat": now,
+        "exp": now + timedelta(days=_REFRESH_TOKEN_EXPIRES_DAYS),
+    }
+    return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
+
+
 def decode_token(token: str) -> dict:
     """
-    Decode and validate a JWT.
+    Decode and validate a JWT, without checking its `type` claim.
 
     Raises HTTPException(401) on any failure — expired, invalid signature,
     malformed, or algorithm confusion. The message is deliberately generic
     so that a client cannot distinguish between "expired" and "tampered",
     which would leak information about the token's state.
+
+    Callers that need to enforce a specific token type should use
+    `decode_token_of_type` instead of calling this function directly.
     """
     try:
         return jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
@@ -143,3 +175,23 @@ def decode_token(token: str) -> dict:
             detail="Could not validate credentials.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def decode_token_of_type(token: str, expected_type: str) -> dict:
+    """
+    Decode a JWT and require that it declares the expected `type`.
+
+    Raises 401 if the token is invalid, expired, or carries a different
+    `type` than expected. This is what keeps access tokens and refresh
+    tokens in their own lanes: a refresh token presented to an endpoint
+    that expects an access token is rejected even though the signature is
+    valid.
+    """
+    payload = decode_token(token)
+    if payload.get("type") != expected_type:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload

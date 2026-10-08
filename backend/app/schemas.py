@@ -74,7 +74,6 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-
 # =============================================================================
 # Authentication
 # =============================================================================
@@ -95,6 +94,27 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     """
     Returned by the login endpoint on success.
+
+    Both tokens are included:
+    - access_token: short-lived (15 min), used for every authenticated call
+    - refresh_token: long-lived (7 days), used only against /api/auth/refresh
+
+    In a production deployment, the refresh token would be set as an
+    HttpOnly cookie rather than returned in the JSON body, so that
+    JavaScript cannot read it. For this lab (no browser storage
+    considerations yet), it is returned in the body and the client is
+    expected to store it appropriately.
     """
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    """
+    Payload for POST /api/auth/refresh.
+
+    Only the refresh token is required. The user identity and role are
+    read from the token itself; they are not re-sent by the client.
+    """
+    refresh_token: str

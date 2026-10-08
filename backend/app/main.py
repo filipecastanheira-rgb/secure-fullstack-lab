@@ -25,11 +25,18 @@ from app.schemas import (
     AssetCreate,
     AssetRead,
     LoginRequest,
+    RefreshRequest,
     TokenResponse,
     UserCreate,
     UserRead,
 )
-from app.security import create_access_token, hash_password, verify_password
+from app.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token_of_type,
+    hash_password,
+    verify_password,
+)
 
 
 @asynccontextmanager
@@ -38,9 +45,7 @@ async def lifespan(app: FastAPI):
     Runs on startup (before the first request) and on shutdown.
 
     We use it to create database tables. SQLAlchemy's create_all is
-    idempotent: it creates only tables that do not exist yet. This means
-    adding a new model (e.g. User) does not require a migration tool for
-    now — the table is created on the next startup.
+    idempotent: it creates only tables that do not exist yet.
     """
     Base.metadata.create_all(bind=engine)
     yield
@@ -48,7 +53,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Secure Fullstack Lab API",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -169,9 +174,9 @@ def read_current_user(
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     """
-    Authenticate a user and return a JWT access token.
+    Authenticate a user and return a JWT access token and refresh token.
 
-    On success: 200 with a TokenResponse.
+    On success: 200 with a TokenResponse containing both tokens.
     On failure: 401 with a generic message.
 
     The message is deliberately the same whether the email does not exist
@@ -198,5 +203,63 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token(subject=str(user.id), role=user.role)
-    return TokenResponse(access_token=token)
+    subject = str(user.id)
+    return TokenResponse(
+        access_token=create_access_token(subject=subject, role=user.role),
+        refresh_token=create_refresh_token(subject=subject, role=user.role),
+    )
+
+
+@app.post("/api/auth/refresh", response_model=TokenResponse)
+def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+    """
+    Exchange a valid refresh token for a new pair of tokens.
+
+    The refresh endpoint only accepts tokens whose `type` claim is
+    "refresh". An access token presented here is rejected, which prevents
+    a stolen access token from extending its own lifetime.
+
+    Returns both a new access token AND a new refresh token. Rotating the
+    refresh token on every use is the safer behaviour: if a refresh token
+    is leaked, it stops being valid the next time the legitimate client
+    refreshes. Without rotation, a stolen refresh token remains usable for
+    its full 7-day lifetime.
+
+    Note: this implementation does not yet track revoked refresh tokens,
+    so a leaked refresh token that has not been used since the leak would
+    still work until it is replaced by the next legitimate refresh. A
+    full revocation scheme (a token version counter per user) is a future
+    improvement.
+    """
+    token_payload = decode_token_of_type(payload.refresh_token, "refresh")
+
+    subject = token_payload.get("sub")
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        user_id = int(subject)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    new_subject = str(user.id)
+    return TokenResponse(
+        access_token=create_access_token(subject=new_subject, role=user.role),
+        refresh_token=create_refresh_token(subject=new_subject, role=user.role),
+    )

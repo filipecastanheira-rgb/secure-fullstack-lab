@@ -220,3 +220,80 @@ def test_assets_list_with_token(client, admin_token):
     response = client.get("/api/assets", headers=auth_header(admin_token))
     assert response.status_code == 200
     assert response.json() == []
+
+
+# =============================================================================
+# Refresh tokens
+# =============================================================================
+
+def test_login_returns_both_tokens(client, test_admin):
+    """Login returns both an access token and a refresh token."""
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "admin-password-muito-longa-ok"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "access_token" in body
+    assert "refresh_token" in body
+    assert body["access_token"] != body["refresh_token"]
+
+
+def test_refresh_with_valid_refresh_token(client, test_admin):
+    """A valid refresh token returns a new pair of tokens."""
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "admin-password-muito-longa-ok"},
+    )
+    refresh_token = login.json()["refresh_token"]
+
+    response = client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "access_token" in body
+    assert "refresh_token" in body
+
+
+def test_refresh_rejects_access_token(client, test_admin):
+    """
+    An access token cannot be used to refresh.
+
+    Without the `type` claim check, an access token (short-lived) could be
+    used to obtain new tokens indefinitely — collapsing the two-token model
+    into a single long-lived one.
+    """
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "admin-password-muito-longa-ok"},
+    )
+    access_token = login.json()["access_token"]
+
+    response = client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": access_token},
+    )
+    assert response.status_code == 401
+
+
+def test_protected_endpoint_rejects_refresh_token(client, test_admin):
+    """
+    A refresh token cannot be used as an access token.
+
+    This is the mirror image of the previous test: the refresh token is
+    longer-lived (7 days) and must never work on endpoints that expect a
+    short-lived access token.
+    """
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "admin-password-muito-longa-ok"},
+    )
+    refresh_token = login.json()["refresh_token"]
+
+    response = client.get(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {refresh_token}"},
+    )
+    assert response.status_code == 401
