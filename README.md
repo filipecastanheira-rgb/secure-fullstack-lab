@@ -178,16 +178,16 @@ in exactly two places:
 - [x] Vulnerability and patch management policy
 - [x] Simulated incident exercise with post-mortem
 
-### Phase 6 — Security pipeline (CI/CD)
+### Phase 6 — Security pipeline (CI/CD) (complete)
 
-- [ ] GitHub Actions workflow triggered on push
-- [ ] Python lint (ruff) and JS lint (eslint)
-- [ ] Backend tests (pytest)
-- [ ] SAST: Bandit
-- [ ] SCA: pip-audit and npm audit
-- [ ] Secrets scanning: gitleaks
-- [ ] DAST: OWASP ZAP baseline against the running lab
-- [ ] Reports published as workflow artefacts
+- [x] GitHub Actions workflow triggered on push
+- [x] Python lint (ruff) and JS lint (eslint + oxlint)
+- [x] Backend tests (pytest, 19 tests)
+- [x] SAST: Bandit
+- [x] SCA: pip-audit
+- [x] Secrets scanning: gitleaks (full history)
+- [x] DAST: OWASP ZAP baseline against the running lab
+- [x] Six parallel jobs; total runtime ~2 minutes
 
 ### Phase 7 — Deliberate vulnerabilities
 
