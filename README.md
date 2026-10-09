@@ -191,10 +191,10 @@ in exactly two places:
 
 ### Phase 7 — Deliberate vulnerabilities
 
-- [ ] Introduce SQL injection, IDOR, and misconfigured CORS
-- [ ] Detect each with the pipeline and/or manual testing
-- [ ] Fix each with a documented commit
-- [ ] Before/after evidence in the JOURNAL
+- [x] SQL injection — introduced, detected (bandit B608), fixed, documented
+- [ ] IDOR (Insecure Direct Object Reference)
+- [ ] Misconfigured CORS
+- [x] Before/after evidence in `docs/vuln-exercise-sqli.md`
 
 ### Phase 8 — Detection and monitoring
 
