@@ -2715,3 +2715,331 @@ The previous phases built the conditions for this exercise:
   not connect to a documented treatment plan.
 
 Phase 7 uses all of it.
+
+---
+
+## Session 17 — Phase 7: SQL injection exercise
+
+**Goal:** introduce a vulnerability deliberately, detect it with the
+existing tools, fix it, and document the full cycle. This is the first of
+three vulnerability exercises in Phase 7 (SQL injection, IDOR, CORS).
+
+The session was the longest of the project so far and produced eight
+commits across two pull requests. It also revealed two unrelated problems
+in the pipeline that were fixed in passing, and one correction to an
+earlier conclusion about what the SAST scanner detects.
+
+### The approach
+
+The exercise was executed as two pull requests, so that the Git history
+records the cycle explicitly:
+
+    PR #1 (branch vuln/sql-injection): introduce the vulnerability
+    PR #2 (branch fix/sql-injection):  correct it
+
+Both branches were merged to `main`. The vulnerability existed on `main`
+for a few minutes, in an isolated lab, with the exercise documented in
+the commit message and in the PR title. After the fix, `main` is clean
+and the history shows the full sequence.
+
+The decision to make the vulnerability visible in the main branch history
+(rather than working on a scratch branch that never merges) was
+deliberate: the value of the exercise is the historical record. A
+reviewer looking at the commit log sees the introduction, the detection,
+and the fix, in order.
+
+### Part 1 — Introducing the vulnerability
+
+A `search` query parameter was added to `GET /api/assets`, and the SQL
+was built by string interpolation:
+
+    query = text(
+        f"SELECT id, hostname, ip_address, os, created_at "
+        f"FROM assets WHERE hostname LIKE '%{search}%' ORDER BY id"
+    )
+    result = db.execute(query).fetchall()
+
+This is the classic form of SQL injection. The `search` value becomes
+part of the query text, so a value such as `' OR 1=1--` changes the SQL
+that reaches the database engine.
+
+The commit message (`4814a19`) states explicitly that this is an
+exercise, references the threat model section that describes the threat,
+and instructs not to copy the pattern.
+
+### Part 2 — Confirming the vulnerability
+
+Two `curl` requests were made against the endpoint, using a valid JWT:
+
+**Control — normal behaviour:**
+
+    GET /api/assets?search=ubuntu
+    → 1 asset returned (ubuntu-lab)
+
+**Attack — SQL injection:**
+
+    GET /api/assets?search=%27%20OR%201%3D1--
+    → 3 assets returned
+
+The payload is `' OR 1=1--`. No hostname in the database contains this
+string, so a functional filter would return zero rows. The fact that it
+returned everything is the vulnerability.
+
+The SQL that actually reached the engine was:
+
+    SELECT ... FROM assets WHERE hostname LIKE '%' OR 1=1--%' ORDER BY id
+
+`OR 1=1` is always true; `--` comments the remainder. The filter is
+bypassed.
+
+### Part 3 — What the CI pipeline did
+
+The full picture only became clear after running the pipeline on the
+vulnerable branch. Two commits in this session were corrections of
+earlier statements that turned out to be wrong.
+
+**Initial prediction (written in the first draft of `vuln-exercise-sqli.md`):**
+the SAST scanner (bandit) would not detect the vulnerability, because
+pattern-based scanners are known to miss certain classes of issue.
+
+**Actual result, after the first CI run on the PR:**
+
+| Job                    | Result     | Notes                                    |
+|------------------------|------------|------------------------------------------|
+| Lint (ruff)            | ❌ Failed  | Unrelated — see Part 4                   |
+| Security (bandit)      | ❌ **Failed** | **B608 detected — the SQL injection**  |
+| Secrets (gitleaks)     | ❌ Failed  | Unrelated — see Part 5                   |
+| DAST (ZAP baseline)    | ✅ Passed  | Baseline scan does not perform injection tests |
+| Frontend lint          | ✅ Passed  | —                                        |
+| Tests (pytest)         | ✅ Passed  | No test covers the injection case         |
+
+**Bandit fired.** The rule is B608 (`hardcoded_sql_expressions`),
+severity Medium, confidence Low, CWE-89. The output pointed directly to
+`app/main.py:104`.
+
+This was a correction to the initial prediction, and it was recorded as
+such. The document `vuln-exercise-sqli.md` was updated (commit `f18bc6d`)
+to replace the incorrect statement with the actual result and a note
+explaining that the earlier version had been written before the pipeline
+ran.
+
+**The lesson:** an assumption about a tool's behaviour is not a fact
+until it is tested. The prediction was reasonable — pattern-based
+scanners are known for this limitation — but in this specific case, for
+this specific vulnerability, the scanner had the right rule and the rule
+worked.
+
+### Part 4 — Discovery: unpinned tool versions in CI
+
+The ruff job failed with four `UP017` findings (`Convert to datetime.UTC
+alias`). But the same ruff, on the same code, passed locally.
+
+The cause: the workflow installed ruff with `pip install ruff` — without
+a version pin. The runner downloaded the latest ruff, which had a newer
+default rule set than the version installed locally. The same code
+failed in one environment and passed in the other because the **tool**
+was different, not the code.
+
+**The immediate fix:** adapt the code to the newer rule (`datetime.UTC`
+instead of `timezone.utc`) and pin the tool version in the workflow:
+
+    run: pip install ruff==0.16.10
+    run: pip install bandit==1.9.4 pip-audit==2.10.1
+
+**The underlying principle:** any tool that runs in more than one
+environment must have a pinned version. Without it, "the same code"
+passes one day and fails the next, and the failure is attributed to the
+wrong cause.
+
+This is the same principle already applied in `requirements.txt` (fixed
+versions) and in `package-lock.json` (fixed versions). It was simply
+missing for the tools installed directly in the workflow.
+
+The pinning was committed as `9340d90` and documented in the workflow
+file itself, so that a future reader sees not only *what* version but
+*why* it is pinned.
+
+### Part 5 — Discovery: gitleaks permissions in pull requests
+
+The gitleaks job failed after 6 seconds — too fast for a real scan of
+the full history. The cause was not detection.
+
+The `gitleaks/gitleaks-action` publishes findings in two ways: as a
+comment on the pull request, and as SARIF in the repository's Security
+tab. Both require permissions that are not granted by the default
+`GITHUB_TOKEN`. Without those permissions, the action fails before it
+runs the scan.
+
+**The fix:** explicit permissions in the job:
+
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+Committed as `907de53`. After this change, the job runs in ~10 seconds
+and reports cleanly.
+
+**Why this matters beyond this exercise:** every GitHub Action that
+writes back to the repository (comments, statuses, SARIF uploads) needs
+explicit permissions. The default token is read-only. This is a change
+from the earlier behaviour of GitHub and a common source of "the action
+used to work and now it fails" issues.
+
+### Part 6 — The fix
+
+The corrected SQL uses parameter binding:
+
+    query = text(
+        "SELECT id, hostname, ip_address, os, created_at "
+        "FROM assets WHERE hostname LIKE :search ORDER BY id"
+    )
+    result = db.execute(query, {"search": f"%{search}%"}).fetchall()
+
+**The difference is the `:search` placeholder.** SQLAlchemy sends the
+query and the value as two separate things to the database engine. The
+engine treats the value as data, never as part of the query. A payload
+that closes a string and appends SQL — `' OR 1=1--` — becomes a literal
+string that no hostname contains.
+
+The wildcards (`%`) are applied to the **value**, not the query. This
+matters: the query is fixed and can be cached and audited; the value
+changes per request and is not interpreted as code.
+
+### Part 7 — Verification of the fix
+
+Three checks were run against the fixed code, before the PR was merged:
+
+**Check 1 — the attack payload:**
+
+    GET /api/assets?search=%27%20OR%201%3D1--
+    → []
+
+An empty list. The payload is treated as a literal search string. The
+injection is neutralised.
+
+**Check 2 — normal functionality:**
+
+    GET /api/assets?search=ubuntu
+    → 1 asset (ubuntu-lab)
+
+The fix did not break the normal case. A fix that removes the
+vulnerability by removing the feature is not a fix.
+
+**Check 3 — the SAST scanner on the fixed file:**
+
+    $ bandit -r app/
+    No issues identified.
+
+Bandit no longer finds the vulnerability. Same tool, same command,
+different code, different result.
+
+The comparison between the two states of the same endpoint is the
+proof:
+
+| State             | Payload `' OR 1=1--`      | Result           |
+|-------------------|----------------------------|------------------|
+| Vulnerable        | `LIKE '%' OR 1=1--%'`      | All 3 assets     |
+| Fixed             | `LIKE '%' OR 1=1--%'` as text | Empty list     |
+
+Same payload. Different code. Opposite result. That is what a fix
+demonstrates.
+
+### Part 8 — The evidence document
+
+`docs/vuln-exercise-sqli.md` was written and updated three times during
+the session:
+
+1. **Initial version** (`7853059`): described the vulnerability, the
+   attack, the fix, and predicted that the CI would not detect it.
+2. **Correction** (`f18bc6d`): replaced the incorrect prediction with
+   the actual result (bandit did detect it) and a note explaining why
+   the earlier version was wrong.
+3. **Addition** (final commit of the session): added the pull request
+   history and the outcome table.
+
+The correction in step 2 is a deliberate choice. The document could have
+been edited silently, and no one would have noticed. Instead, the
+corrected version records the fact that the first version was wrong, and
+why. This is what an audit trail looks like: not just the final state,
+but the path to it.
+
+### Part 9 — What the exercise demonstrated
+
+| Aspect                                    | Outcome                          |
+|-------------------------------------------|----------------------------------|
+| The vulnerability was real                | Confirmed — filter bypassed      |
+| It was exploitable with a trivial payload | Confirmed — `' OR 1=1--`         |
+| The SAST scanner detected it              | Confirmed — bandit B608          |
+| The pipeline blocked the merge            | Confirmed — Security job failed  |
+| The fix removed the vulnerability         | Confirmed — payload returns `[]` |
+| The fix preserved functionality           | Confirmed — normal search works  |
+| The fix closed the SAST finding           | Confirmed — bandit passed        |
+| The history recorded the cycle            | Confirmed — PR #1 and PR #2      |
+
+### Concepts learned
+
+- **A prediction about a tool is not a fact until tested.** The initial
+  statement "bandit will not detect this" was reasonable and wrong. The
+  correction is documented rather than hidden.
+- **CI drift caused by unpinned versions is a real class of problem.**
+  The same code passes and fails without changing. The fix is pinning,
+  not debugging.
+- **GitHub Actions writes need explicit permissions.** The default token
+  is read-only. Every action that publishes results must declare what
+  it needs.
+- **The value of a fix is a change in observable behaviour.** "I changed
+  the code" is not a fix. "The payload returned all rows before and
+  returns none now" is a fix.
+- **The history of the vulnerability is part of its value.** Merging the
+  vulnerable code to `main` and then fixing it makes the log the
+  artefact. A branch that never merges would leave no trace.
+- **Corrections should be visible, not silent.** When a prediction turns
+  out wrong, the correction is written down. Silently rewriting the
+  document removes the evidence that the analysis was tested.
+- **SAST has boundaries that are not bugs.** Bandit detected the SQL
+  injection. It will not detect IDOR, because IDOR is a policy flaw, not
+  a code pattern. The next exercise exists because the classes of
+  vulnerability that pattern-based tools miss are the classes that need
+  design and testing.
+
+### Files changed
+
+- `backend/app/main.py` — vulnerable version, then fixed version
+- `docs/vuln-exercise-sqli.md` — created and updated three times
+- `.github/workflows/ci.yml` — tool version pinning; gitleaks permissions
+- `backend/app/models.py`, `backend/app/security.py` — `datetime.UTC`
+  alias (adaptation to newer ruff rule)
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `4814a19` | vuln(sql-injection): introduce SQL injection in list_assets for Phase 7 exercise |
+| `7853059` | docs(vuln): record SQL injection exercise — introduction, detection, and impact |
+| `7dabb63` | fix(datetime): use datetime.UTC alias per ruff UP017            |
+| `9340d90` | ci: pin tool versions to prevent silent drift between local and CI |
+| `f18bc6d` | docs(vuln): correct the CI detection record — bandit did detect the SQL injection |
+| `907de53` | ci(gitleaks): grant pull-requests and security-events permissions |
+| `aae7677` | Merge pull request #1 (vulnerability)                          |
+| `1edcd4b` | fix(sql-injection): replace string interpolation with parameter binding |
+| `25525e5` | Merge pull request #2 (fix)                                    |
+
+### Next step — Phase 7 continues
+
+Two more exercises remain in Phase 7:
+
+**IDOR** — a logic flaw, not a code pattern. The exercise will add an
+ownership field to assets, create assets owned by two different users,
+and demonstrate that user A can read user B's asset through the API.
+Bandit will not detect this — the code is syntactically correct. The
+detection will come from a test case and from manual review. This is the
+complement to the SQL injection exercise: what pattern-based SAST cannot
+find.
+
+**CORS misconfiguration** — a configuration flaw. The exercise will
+reintroduce a permissive CORS policy and demonstrate the impact, then
+fix it. Detection is by header inspection and by the DAST scan.
+
+After these two, the Phase 7 checklist is complete and Phase 8 (detection
+and monitoring) follows.
