@@ -16,6 +16,7 @@ reintroduced with an explicit origin allowlist.
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models
@@ -77,11 +78,43 @@ def read_hello():
 
 @app.get("/api/assets", response_model=list[AssetRead])
 def list_assets(
+    search: str = "",
     db: Session = Depends(get_db),
     _: models.User = Depends(get_current_user),
 ):
-    """Return all assets stored in the database."""
-    return db.query(models.Asset).order_by(models.Asset.id).all()
+    """
+    Return all assets stored in the database, optionally filtered by
+    hostname.
+
+    -------------------------------------------------------------------------
+    INTENTIONALLY VULNERABLE — Phase 7 exercise.
+
+    This version builds the SQL query by string interpolation. It exists
+    only to demonstrate SQL injection, to be detected, and to be fixed in
+    a later commit on the branch `fix/sql-injection`.
+
+    DO NOT copy this pattern. The fix is in the next commit.
+
+    The vulnerability: the `search` parameter is concatenated directly into
+    the SQL text. A value such as `' OR 1=1--` becomes part of the query
+    itself, allowing the caller to change the SQL semantics.
+    -------------------------------------------------------------------------
+    """
+    query = text(
+        f"SELECT id, hostname, ip_address, os, created_at "
+        f"FROM assets WHERE hostname LIKE '%{search}%' ORDER BY id"
+    )
+    result = db.execute(query).fetchall()
+    return [
+        {
+            "id": row[0],
+            "hostname": row[1],
+            "ip_address": row[2],
+            "os": row[3],
+            "created_at": row[4],
+        }
+        for row in result
+    ]
 
 
 @app.post(
