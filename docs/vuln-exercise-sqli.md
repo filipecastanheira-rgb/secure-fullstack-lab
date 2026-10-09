@@ -200,3 +200,46 @@ same pattern.
 - `docs/vulnerability-management-policy.md` — the process that governs
   a finding like this in the normal course of operations.
 - Commits: `vuln/sql-injection` (introduction), `fix/sql-injection` (fix).
+
+
+## 9. Pull request history
+
+The exercise was executed via two pull requests, so that the Git history
+records the full cycle:
+
+**PR #1 — Introduction of the vulnerability** (merged as `aae7677`)
+
+- Branch: `vuln/sql-injection`
+- Commits: `4814a19` (introduction), `7853059` (documentation),
+  `7dabb63` (ruff UP017 fix — unrelated to the exercise, discovered
+  during the PR), `9340d90` (tool version pinning — also discovered
+  during the PR), `f18bc6d` (correction of the CI detection record),
+  `907de53` (gitleaks permissions)
+- CI result on merge: **5 checks green, 1 check red** (bandit — the
+  detection that this exercise was designed to produce)
+
+**PR #2 — Fix** (merged as `25525e5`)
+
+- Branch: `fix/sql-injection`
+- Commit: `1edcd4b` (parameter binding)
+- CI result on merge: **6 checks green, 0 red**
+
+The two CI results, taken together, are the evidence that the SAST
+scanner works: it failed on the vulnerable code and passed on the fixed
+code, with no other change between the two runs on `main.py`.
+
+## 10. What this exercise demonstrated
+
+| Aspect                                    | Outcome                          |
+|-------------------------------------------|----------------------------------|
+| The vulnerability was real                | Confirmed — filter bypassed      |
+| It was exploitable with a trivial payload | Confirmed — `' OR 1=1--`         |
+| The SAST scanner detected it              | Confirmed — bandit B608          |
+| The pipeline blocked the merge            | Confirmed — Security job failed  |
+| The fix removed the vulnerability         | Confirmed — payload returns `[]` |
+| The fix preserved functionality           | Confirmed — normal search works  |
+| The fix closed the SAST finding           | Confirmed — bandit passed        |
+| The history recorded the cycle            | Confirmed — PR #1 and PR #2      |
+
+The exercise is closed.
+
