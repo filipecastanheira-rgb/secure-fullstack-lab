@@ -12,7 +12,7 @@ Keeping all cryptographic operations here means:
 """
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import jwt
@@ -113,7 +113,7 @@ def create_access_token(subject: str, role: str) -> str:
     The `type` claim is set to "access" so that this token cannot be used
     where a refresh token is required (and vice versa).
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "role": role,
@@ -137,7 +137,7 @@ def create_refresh_token(subject: str, role: str) -> str:
     refresh token would work as an access token, and the two-token model
     would collapse into a single, longer-lived one.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "role": role,
