@@ -21,7 +21,10 @@ jobs:
           python-version: "3.14"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned: a newer ruff may enable new default rules, producing
+        # CI failures that do not reproduce locally. Versions are advanced
+        # deliberately, not by accident.
+        run: pip install ruff==0.16.10
 
       - name: Run ruff
         working-directory: backend
@@ -62,7 +65,8 @@ jobs:
           python-version: "3.14"
 
       - name: Install security tools
-        run: pip install bandit pip-audit
+        # Pinned for the same reason as ruff above.
+        run: pip install bandit==1.9.4 pip-audit==2.10.1
 
       - name: Run bandit (SAST)
         working-directory: backend
