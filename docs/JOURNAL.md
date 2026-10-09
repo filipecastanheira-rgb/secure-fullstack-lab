@@ -2380,3 +2380,338 @@ The vulnerability management policy written in this session depends on
 Phase 6 for its automated sources. The two phases are connected: the
 policy describes what should happen, and the pipeline is what makes it
 happen without manual intervention.
+
+---
+
+## Session 16 — CI/CD pipeline (Phase 6)
+
+**Goal:** build a GitHub Actions pipeline that runs the tests and the
+security scanners automatically on every push. Until this session, the
+tests, the linters, and the scanners existed but only ran when invoked
+manually. Phase 6 makes them run on their own.
+
+The session produced four commits, added a `ruff.toml` configuration, and
+discovered and fixed two issues along the way — the `B904` exception
+chaining and the `host.docker.internal` resolution on Linux.
+
+### Part 1 — Tools installed locally first
+
+Before writing any workflow file, the tools were installed and run
+manually in the development environment:
+
+- `ruff` — Python linter and formatter
+- `bandit` — SAST scanner for Python
+- `pip-audit` — SCA scanner for Python dependencies
+
+The principle: a workflow file describes *how* to run a set of tools. If
+the tools have not been run manually first, the workflow becomes a place
+to discover trivial errors (typos in commands, missing configuration) at
+the cost of a 30-second round trip on the GitHub runner. Running locally
+first means the workflow only needs to orchestrate tools that are already
+known to work.
+
+### Part 2 — Ruff configuration
+
+The first `ruff check .` returned 20 findings. They fell into four
+categories.
+
+**Category 1 — `I001`, import ordering (5 files).** Cosmetic. Fixed
+automatically by `ruff check --fix`.
+
+**Category 2 — `F401`, unused import (1 file).** `pytest` was imported in
+`test_auth.py` but never referenced. The tests use pytest fixtures by name
+injection, not by direct call, so the import was redundant. Removed
+automatically.
+
+**Category 3 — `PIE790`, unnecessary `pass` (2 files).** `class Base` and
+`class AssetCreate` had a `pass` after the docstring. In Python, a
+docstring is a valid class body, so the `pass` was redundant. Removed
+automatically.
+
+**Category 4 — `B008`, function call in argument default (11 instances).**
+This is the interesting one.
+
+The rule exists because in generic Python, a default value is evaluated
+**once**, when the module is imported, not on every call. So
+`def f(x=now()):` would freeze `x` at the value of `now()` at import time.
+Real bug.
+
+**But FastAPI uses `Depends(...)` in argument defaults as its dependency
+injection mechanism.** It is not a call that runs the dependency; it is a
+marker object that FastAPI inspects. The B008 warning is a false positive
+in this context.
+
+Three options:
+
+1. Add `# noqa: B008` on every one of the 11 endpoints. Works, but
+   clutters the code and hides the fact that the rule exists.
+2. Rewrite the endpoints to not use `Depends` in defaults. Would break
+   FastAPI's design.
+3. Configure ruff to recognise `fastapi.Depends` as an immutable call —
+   telling the linter that this specific function is safe in a default
+   argument.
+
+Option 3 was chosen. The configuration lives in `backend/ruff.toml`:
+
+    [lint.flake8-bugbear]
+    extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]
+
+The choice is documented in the file itself, so that a future reader does
+not have to guess why the rule was muted.
+
+### Part 3 — B904, exception chaining
+
+After the automatic fixes, four `B904` findings remained in three files.
+
+The rule: when raising a new exception inside an `except` block, the
+raise should specify `from err` or `from None`. Without it, Python keeps
+the original exception in the chain, and any traceback handler will show:
+
+    During handling of the above exception, another exception occurred:
+    ValueError: invalid literal for int() with base 10: 'abc'
+
+In our case, that `ValueError` was the result of `int(subject)` failing
+because the JWT `sub` claim was not an integer. Exposing that to the
+client is information leakage: the caller learns that the token subject
+was non-numeric, which is more than they should know.
+
+**`from None` was chosen for all four cases.** It suppresses the chained
+exception. The client receives a uniform 401; the internal reason is not
+in the response. This is the same principle as the generic login error
+message used since Session 13 — multiple internal failure cases, one
+external response.
+
+The four corrected locations:
+
+- `app/dependencies.py` — `int(subject)` in `get_current_user`
+- `app/main.py` — `int(subject)` in the refresh endpoint
+- `app/security.py` — two except clauses in `decode_token`
+
+After the corrections, `ruff check .` returned `All checks passed!`.
+
+### Part 4 — The GitHub Actions workflow
+
+Created `.github/workflows/ci.yml`. The workflow triggers on:
+
+- Push to `main`
+- Pull request against `main`
+- Manual invocation (`workflow_dispatch`)
+
+**Six independent jobs:**
+
+| Job             | Runs                                      | Typical duration |
+|-----------------|-------------------------------------------|------------------|
+| Lint (ruff)     | `ruff check .`                            | 9s               |
+| Tests (pytest)  | `pytest` (19 tests)                       | 24s              |
+| Security        | `bandit -r app/`, `pip-audit`             | 18s              |
+| Secrets         | `gitleaks` against the full history       | 7s               |
+| Frontend lint   | `npx eslint .`, `npx oxlint .`            | 12s              |
+| DAST            | OWASP ZAP baseline against the live API   | 1m 32s           |
+
+**Total run time: approximately 2 minutes.** The jobs run in parallel;
+the total is the duration of the slowest job, not the sum.
+
+**Why six jobs instead of one.** Each job is a separate status check in
+the GitHub interface. A failure in one does not cancel the others. The
+result is a matrix of pass/fail signals: an engineer looking at a PR sees
+immediately whether the problem is in the code style, the tests, or the
+security scan.
+
+### Part 5 — The `--fix` problem in frontend lint
+
+The `package.json` in the frontend defines:
+
+    "lint": "run-s \"lint:*\"",
+    "lint:oxlint": "oxlint . --fix",
+    "lint:eslint": "eslint . --fix --cache",
+
+The `--fix` flags modify the source files to correct problems
+automatically. This is correct behaviour on a developer machine. It is
+**wrong** in a CI runner for two reasons:
+
+1. The runner is destroyed after the job. Any fix is lost, and the next
+   run starts from the same broken state.
+2. The job would pass, because the linter corrected the problem before
+   reporting it. A failing state would be silently reported as success.
+
+The workflow therefore calls the linters directly, without `--fix`:
+
+    npx eslint .
+    npx oxlint .
+
+The choice is documented in a comment in the workflow file itself, so
+that a future contributor who sees the `--fix` in `package.json` and
+wonders why the CI does not use `npm run lint` finds the answer.
+
+### Part 6 — Two attempts at DAST
+
+The DAST job is structurally different from the others: it needs the
+application running while the scan happens. The workflow therefore:
+
+1. Installs the backend dependencies.
+2. Starts the FastAPI server in the background with `nohup`.
+3. Waits (up to 30 seconds) for the health check to succeed.
+4. Runs the OWASP ZAP baseline scan.
+
+**First attempt: failed after 1m22s.**
+
+    Job spider failed to access URL http://host.docker.internal:8000
+    check that it is valid : host.docker.internal: Name or service not known
+
+`host.docker.internal` is a DNS name that Docker Desktop resolves on macOS
+and Windows. **It does not exist on Linux** — and GitHub Actions runners
+are Linux. The ZAP container could not reach the FastAPI server running on
+the runner's host.
+
+**Second attempt: corrected and passed.**
+
+The container reaches the runner's host through the Docker bridge
+gateway, which is `172.17.0.1` on a default installation. The target was
+changed:
+
+    target: "http://172.17.0.1:8000"
+
+This IP is the same one that appears as `docker0` in the local VM (see
+the first `ip addr` output in Session 1). The concept is identical —
+the container and the host communicate through the same bridge, on the
+same subnet.
+
+The DAST job passed on the second attempt, in 1m32s.
+
+**The `fail_action: false` setting is intentional.** On the first run of
+a DAST scan against a new target, the ZAP baseline almost always reports
+things — some are real, most are informational or false positives (the
+scan hits FastAPI directly, without the Nginx security headers in the
+path). Failing the build on the first scan would teach the team to ignore
+the DAST result. Once the findings have been triaged and the rules tuned,
+`fail_action` can be set to `true`.
+
+### Part 7 — What the pipeline proves on every push
+
+After Phase 6, the following is verified automatically on every commit to
+`main`:
+
+- **Code style:** Python and JavaScript conform to the project's rules.
+- **Correctness:** all 19 authentication and authorisation tests pass.
+- **Code security:** no patterns matching the Bandit rule set (eval,
+  exec, weak hashes, `subprocess` with `shell=True`, etc.).
+- **Dependency security:** no known CVEs in the Python dependency tree.
+- **Secrets hygiene:** no secrets in the full Git history — verified with
+  `gitleaks` scanning every commit.
+- **Runtime behaviour:** the running API responds to the ZAP baseline
+  scan without error.
+
+**The last item — gitleaks — matters for a specific reason.** The
+repository is currently private. It will eventually be made public as a
+portfolio artefact. Running `gitleaks` over the full history means that
+if a secret was ever committed, even in a commit that has since been
+modified or removed, the pipeline would have flagged it now, before the
+repository became visible.
+
+### Part 8 — What the pipeline does NOT prove
+
+Honesty about the pipeline's limits:
+
+- **The DAST scan is a baseline.** It checks for common misconfigurations
+  and obvious issues, not a full penetration test. Findings from ZAP do
+  not replace manual review or a proper engagement.
+- **The SAST scan (bandit) is pattern-based.** It does not understand
+  application logic. A logically insecure function that uses safe
+  primitives will not be flagged.
+- **The SCA scan (pip-audit) depends on the vulnerability databases.**
+  A CVE published today may not appear in the feed for hours or days.
+- **The secrets scan (gitleaks) is signature-based.** A secret that does
+  not match a known pattern — for example, a custom-format API key — may
+  not be detected.
+- **The pipeline runs on the diff, not on the deployment.** A green
+  pipeline means the code passes the checks. It does not mean the
+  deployed service is currently in the state the code describes.
+
+These limits are the reason the pipeline is one layer among many, and
+not the only control. They are documented so that the value of a green
+checkmark is not overstated.
+
+### Concepts learned
+
+- **Default argument values are evaluated once.** This is the root of
+  the B008 rule. In most Python code the rule is correct. In FastAPI it
+  is a false positive because `Depends(...)` is a marker, not a call.
+- **Configuring a linter is a design decision, not a workaround.** The
+  `extend-immutable-calls` line in `ruff.toml` is documented and
+  justified. It could have been silenced with 11 `# noqa` comments; that
+  would have hidden the problem rather than resolved it.
+- **Exception chaining is a form of information leakage.** The default
+  behaviour of Python — showing the original exception alongside the
+  replacement — is useful for debugging and dangerous for clients. The
+  `from None` clause is one keyword that closes that leak.
+- **`--fix` in CI masks failures.** A linter that corrects problems
+  before reporting them turns a failure into a silent success on the
+  runner. The correct behaviour is to report and let the developer fix.
+- **The first CI run is a translation problem.** Every difference between
+  the local environment and the runner's environment — Python version,
+  Node version, available tools, DNS names — surfaces on the first run.
+  This is not a defect of the pipeline; it is the pipeline doing its job
+  of finding environmental assumptions.
+- **DNS names are not portable.** `host.docker.internal` works on macOS
+  and Windows because Docker Desktop implements it. On Linux it does
+  not exist, and the correct substitute is the bridge gateway IP.
+  Understanding the *why* makes the fix obvious; without the *why*, the
+  fix looks like a magic number.
+- **Six small jobs beat one large job.** Parallel execution, independent
+  failure signals, and clear attribution of problems. The total runtime
+  is the maximum of the individual durations, not the sum.
+
+### Files changed
+
+- `backend/ruff.toml` — created (linter configuration with justification)
+- `.github/workflows/ci.yml` — created (6 jobs)
+- `backend/app/database.py` — `pass` removed
+- `backend/app/dependencies.py` — import order; `from None`
+- `backend/app/main.py` — `from None`
+- `backend/app/schemas.py` — import order; `pass` removed
+- `backend/app/security.py` — import order; two `from None`
+- `backend/tests/conftest.py` — import order
+- `backend/tests/test_auth.py` — unused import removed; import order
+- `backend/requirements.txt` — ruff, bandit, pip-audit added
+- `README.md` — Phase 6 marked complete
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `c314a7c` | ci: add GitHub Actions workflow with lint, test, and security jobs |
+| `f691f8e` | ci: add gitleaks and frontend lint jobs                         |
+| `080818d` | ci: add DAST job with OWASP ZAP baseline scan                   |
+| `e0329bc` | ci(zap): use docker bridge gateway instead of host.docker.internal |
+| *(pending)* | docs(readme): mark Phase 6 as complete                       |
+| *(pending)* | docs(journal): register session 16 — CI/CD pipeline           |
+
+### Next step — Phase 7
+
+Phase 7 is the deliberate vulnerability exercise. The plan:
+
+1. Introduce a **SQL injection** in a controlled branch.
+2. Introduce an **IDOR** in a controlled branch.
+3. Introduce a **misconfigured CORS** in a controlled branch.
+4. Let the pipeline (and manual testing) detect each one.
+5. Fix each one in a separate commit.
+6. Document the before/after with evidence.
+
+The findings are **documented as intentional** at every step — the
+branch name, the commit messages, and the eventual merge all state that
+the vulnerability was introduced on purpose for the exercise. This is
+the part of the repository that most differentiates it from a standard
+portfolio: it is not just "we build a secure application", it is "we
+understand how the application breaks, we can detect it, and we can
+fix it".
+
+The previous phases built the conditions for this exercise:
+
+- Phase 4 introduced authentication and RBAC, without which IDOR has no
+  meaning (there is no "another user's object" to access).
+- Phase 6 introduced the pipeline, without which the detection would be
+  entirely manual.
+- Phase 5 introduced the risk register, without which the findings would
+  not connect to a documented treatment plan.
+
+Phase 7 uses all of it.
