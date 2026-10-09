@@ -79,6 +79,15 @@ jobs:
   secrets:
     name: Secrets scanning (gitleaks)
     runs-on: ubuntu-latest
+    # The gitleaks action writes its findings as a PR comment and as SARIF
+    # in the repository's Security tab. Both require explicit permissions
+    # that are not granted by the default GITHUB_TOKEN. Without these, the
+    # job fails before the scan runs — which is what happened on the first
+    # run (a 6-second failure, too fast for a real scan).
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
