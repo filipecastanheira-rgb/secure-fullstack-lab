@@ -21,7 +21,6 @@ from app import models
 from app.database import get_db
 from app.security import decode_token_of_type
 
-
 # HTTPBearer extracts the token from the "Authorization: Bearer <token>"
 # header. It also declares the security scheme in the OpenAPI docs, so the
 # /docs page shows an "Authorize" button.
@@ -74,7 +73,10 @@ def get_current_user(
     try:
         user_id = int(subject)
     except (TypeError, ValueError):
-        raise _unauthorized
+        # `from None` suppresses the original ValueError/TypeError from the
+        # exception chain. The client receives a uniform 401; the internal
+        # reason (a non-integer subject) is not exposed.
+        raise _unauthorized from None
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None or not user.is_active:

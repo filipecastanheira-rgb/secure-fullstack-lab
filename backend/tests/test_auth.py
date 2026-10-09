@@ -7,11 +7,9 @@ wired to it), so no test can affect another, and none of them touches the
 real `lab.db`.
 """
 
-import pytest
 
 from app import models
 from tests.conftest import auth_header
-
 
 # =============================================================================
 # Login

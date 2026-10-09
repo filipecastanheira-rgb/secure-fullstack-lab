@@ -15,7 +15,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-
 # =============================================================================
 # Assets
 # =============================================================================
@@ -29,7 +28,6 @@ class AssetBase(BaseModel):
 
 class AssetCreate(AssetBase):
     """Payload required to create a new asset."""
-    pass
 
 
 class AssetRead(AssetBase):

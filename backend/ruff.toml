@@ -1,0 +1,29 @@
+# Ruff configuration for the Secure Fullstack Lab backend.
+#
+# Decisions documented here, not just applied.
+#
+# - line-length 100: the default is 88, which forces awkward line breaks
+#   in Python without a real benefit. 100 is used by several large projects
+#   (Django, FastAPI, pytest) and matches what the code already looks like.
+#
+# - extend-immutable-calls: FastAPI's Depends() is used in argument
+#   defaults as the dependency-injection mechanism. The flake8-bugbear
+#   rule B008 flags this because, in generic Python, calling a function in
+#   a default argument evaluates it once at import time. FastAPI's Depends
+#   is safe — it is a marker object, not a call that runs the dependency.
+#   Declaring it here tells ruff not to flag every endpoint in the project.
+
+line-length = 100
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort (import sorting)
+    "B",    # flake8-bugbear
+    "PIE",  # flake8-pie (misc style)
+    "UP",   # pyupgrade (modern Python syntax)
+]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]

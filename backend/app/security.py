@@ -11,9 +11,9 @@ Keeping all cryptographic operations here means:
 - the code that handles secrets is small and auditable.
 """
 
+import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import secrets
 
 import jwt
 from argon2 import PasswordHasher
@@ -23,7 +23,6 @@ from argon2.exceptions import (
     VerifyMismatchError,
 )
 from fastapi import HTTPException, status
-
 
 # =============================================================================
 # Password hashing (argon2id)
@@ -164,17 +163,20 @@ def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
+        # `from None` keeps the client response uniform. The distinction
+        # between expired and invalid remains in the internal log (via the
+        # original exception class) but is not surfaced to the caller.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials.",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials.",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
 
 
 def decode_token_of_type(token: str, expected_type: str) -> dict:

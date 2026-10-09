@@ -24,7 +24,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     """Base class that every ORM model will inherit from."""
-    pass
 
 
 def get_db():
