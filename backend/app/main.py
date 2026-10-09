@@ -86,25 +86,20 @@ def list_assets(
     Return all assets stored in the database, optionally filtered by
     hostname.
 
-    -------------------------------------------------------------------------
-    INTENTIONALLY VULNERABLE — Phase 7 exercise.
+    The `search` parameter is bound as a query parameter (`:search`),
+    never interpolated into the SQL text. This is what makes the endpoint
+    resistant to SQL injection: whatever the caller sends is treated as a
+    value, not as code.
 
-    This version builds the SQL query by string interpolation. It exists
-    only to demonstrate SQL injection, to be detected, and to be fixed in
-    a later commit on the branch `fix/sql-injection`.
-
-    DO NOT copy this pattern. The fix is in the next commit.
-
-    The vulnerability: the `search` parameter is concatenated directly into
-    the SQL text. A value such as `' OR 1=1--` becomes part of the query
-    itself, allowing the caller to change the SQL semantics.
-    -------------------------------------------------------------------------
+    This is the fixed version of the exercise in `docs/vuln-exercise-sqli.md`.
+    The vulnerable version (string interpolation) was merged into `main`
+    deliberately for the exercise, and the difference is documented there.
     """
     query = text(
-        f"SELECT id, hostname, ip_address, os, created_at "
-        f"FROM assets WHERE hostname LIKE '%{search}%' ORDER BY id"
+        "SELECT id, hostname, ip_address, os, created_at "
+        "FROM assets WHERE hostname LIKE :search ORDER BY id"
     )
-    result = db.execute(query).fetchall()
+    result = db.execute(query, {"search": f"%{search}%"}).fetchall()
     return [
         {
             "id": row[0],
