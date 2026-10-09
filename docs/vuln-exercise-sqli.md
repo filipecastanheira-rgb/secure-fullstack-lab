@@ -74,36 +74,69 @@ remainder of the original query. The filter is bypassed.
 
 ## 3. What the CI pipeline detected
 
-**Nothing.**
+**The bandit job failed.** The SQL injection was detected by the SAST
+scanner in the CI pipeline.
+
+**Bandit output (from the pull request check):**
+
+    >> Issue: [B608:hardcoded_sql_expressions] Possible SQL injection
+       vector through string-based query construction.
+       Severity: Medium   Confidence: Low
+       CWE: CWE-89 (https://cwe.mitre.org/data/definitions/89.html)
+       Location: app/main.py:104:10
+       103      query = text(
+       104          f"SELECT id, hostname, ip_address, os, created_at "
+       105          f"FROM assets WHERE hostname LIKE '%{search}%' ORDER BY id"
+       106      )
+
+**What the other tools did:**
 
 | Tool               | Result on the vulnerable commit         |
 |--------------------|------------------------------------------|
-| ruff               | `All checks passed!`                     |
-| bandit             | No issues identified                     |
+| **bandit**         | **Failed — B608 detected**               |
+| ruff               | Initially failed (UP017, unrelated); after fix, passed |
 | pip-audit          | No known vulnerabilities                 |
-| gitleaks           | No secrets found                         |
+| gitleaks           | Failed — see §7 for the cause (not a real detection) |
 | eslint / oxlint    | Not applicable (backend change)          |
-| OWASP ZAP baseline | Not applicable — baseline scan does not perform injection testing |
+| OWASP ZAP baseline | Passed — baseline scan does not perform injection testing |
+| pytest             | Passed — no test covers the injection case |
 
-**This is the central finding of the exercise.** None of the automated
-tools in the pipeline detected a SQL injection in the source code. The
-tools are working as designed — they are not designed to detect this
-class of vulnerability. This is a known limitation, documented in the
-JOURNAL under "What the pipeline does NOT prove".
+**Correction to an earlier note.** An earlier draft of this document
+stated that bandit did not detect the vulnerability. That was incorrect:
+it was written before the pipeline ran on the vulnerable commit. The
+scanner works as designed. The correction is recorded here rather than
+silently rewritten — a false statement about what a tool does not detect
+is more dangerous than a false statement about what it does detect.
 
-The detection mechanisms that would have caught it:
+**What this demonstrates:**
 
-1. **Manual code review** — the reviewer sees `f"...{search}..."` and
-   recognises the anti-pattern.
-2. **A dedicated test** — a unit test that sends the payload and asserts
-   that only the expected rows are returned. This test does not exist
-   yet; it is on the action list for this exercise.
-3. **DAST with injection testing enabled** — the OWASP ZAP baseline scan
-   does not perform injection tests. A full scan (or an active scan)
-   would, given enough time and coverage.
-4. **A SAST tool with data-flow analysis** — Bandit is pattern-based and
-   does not perform taint analysis. Tools such as Semgrep or CodeQL can
-   track user input from source to sink and would have flagged this.
+1. **SAST works.** Bandit has a rule (B608) specifically for
+   string-interpolated SQL. It fired.
+2. **The pipeline blocks the merge.** A pull request that introduces a
+   detected vulnerability cannot be merged without explicitly overriding
+   the check.
+3. **The detection would not have happened without the pipeline.** The
+   developer (single-operator lab) wrote the vulnerable code; a reviewer
+   would have needed to notice it manually. The pipeline made the
+   detection automatic and consistent.
+
+**What bandit did NOT detect and why it matters:**
+
+Bandit is a pattern-based scanner. Its strength is that it is fast and
+has almost no false negatives on its defined rule set. Its weakness is
+that it only finds patterns it has rules for. The classes of
+vulnerability that bandit does not detect — and which the exercise
+demonstrates separately — are:
+
+- **IDOR** — a logic flaw, not a pattern. No source code line is "wrong".
+- **Broken access control** — the code is correct in isolation; the
+  policy is wrong.
+- **Business logic flaws** — the code does what it says; the says is
+  wrong.
+
+This is why the exercise continues past SQL injection. The categories
+that pattern-based SAST cannot find are exactly the categories where
+human design and test cases matter most.
 
 ## 4. Impact
 
