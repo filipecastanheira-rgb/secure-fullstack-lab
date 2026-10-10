@@ -13,11 +13,8 @@ The test does, because it is written to know what the policy is, and
 it fails when the code disagrees with it.
 """
 
-import pytest
-from fastapi.testclient import TestClient
 
 from app.main import app
-
 
 # Endpoints that are intentionally public. Every other route must
 # require authentication.
