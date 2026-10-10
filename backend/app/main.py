@@ -149,39 +149,35 @@ def create_asset(
 def get_asset(
     asset_id: int,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
     """
-    Return a single asset by id.
+    Return a single asset by id, if the authenticated user owns it.
 
-    -------------------------------------------------------------------------
-    INTENTIONALLY VULNERABLE — Phase 7 exercise.
+    The query filters on both `id` and `owner_id`. This is the row-level
+    authorisation that the vulnerable version was missing: a user can
+    only retrieve an asset that belongs to them. Another user's asset is
+    indistinguishable from a non-existent asset — both return 404, so
+    the endpoint does not reveal whether a given id exists.
 
-    This endpoint requires authentication but does NOT check that the
-    requesting user owns the asset. Any authenticated user can read any
-    asset by guessing or enumerating its id.
+    This is the fixed version of the IDOR exercise in
+    `docs/vuln-exercise-idor.md`. The vulnerable version (no ownership
+    filter) was merged into `main` deliberately for the exercise, and the
+    difference is documented there.
 
-    This is the classic IDOR (Insecure Direct Object Reference) pattern:
-    the object identifier (`asset_id`) is taken directly from the request
-    and used to look up an object, without verifying that the caller is
-    authorised to access that specific object.
-
-    The fix is in a follow-up commit on the branch `fix/idor`. It adds a
-    filter on `owner_id == current_user.id` to the query.
-
-    Note that no scanner will detect this:
-    - ruff sees syntactically valid Python.
-    - bandit sees no unsafe pattern — there is no string interpolation,
-      no eval, no subprocess.
-    - The route policy test in tests/test_routes_policy.py verifies that
-      the endpoint requires authentication. It does — the vulnerability
-      is at the authorisation level, one layer below.
-
-    The vulnerability can only be detected by a test that knows what the
-    policy should be: "a user must not read another user's asset."
-    -------------------------------------------------------------------------
+    Note on the 404 response: returning 404 (rather than 403) for an
+    asset that exists but belongs to another user is deliberate. A 403
+    would confirm to the caller that the asset exists — an information
+    leak. A 404 is indistinguishable from a genuinely non-existent id.
     """
-    asset = db.query(models.Asset).filter(models.Asset.id == asset_id).first()
+    asset = (
+        db.query(models.Asset)
+        .filter(
+            models.Asset.id == asset_id,
+            models.Asset.owner_id == current_user.id,
+        )
+        .first()
+    )
     if asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
