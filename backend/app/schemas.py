@@ -27,12 +27,19 @@ class AssetBase(BaseModel):
 
 
 class AssetCreate(AssetBase):
-    """Payload required to create a new asset."""
+    """
+    Payload required to create a new asset.
+
+    Note: `owner_id` is deliberately NOT a field here. It is assigned by
+    the server from the authenticated user. If it were a field, a client
+    could create an asset owned by someone else (mass assignment).
+    """
 
 
 class AssetRead(AssetBase):
     """Asset representation returned by the API."""
     id: int
+    owner_id: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

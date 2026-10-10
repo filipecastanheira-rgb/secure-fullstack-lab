@@ -72,41 +72,46 @@ def read_hello():
 # =============================================================================
 # Assets
 # =============================================================================
-# Both endpoints require an authenticated user. Any authenticated user can
-# list and create assets. Ownership and per-user filtering will be added in
-# a later phase (Phase 7, IDOR demonstration).
+# Both endpoints require an authenticated user, and both are scoped to the
+# owner. A user can only list and create their own assets. Cross-user
+# access is checked at the endpoint level (row-level authorization) — see
+# the IDOR exercise for the deliberate weakness in the companion endpoint.
 
 @app.get("/api/assets", response_model=list[AssetRead])
 def list_assets(
     search: str = "",
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
     """
-    Return all assets stored in the database, optionally filtered by
-    hostname.
+    Return the assets owned by the authenticated user, optionally filtered
+    by hostname.
+
+    Two filters apply: ownership (only the user's own assets) and the
+    optional hostname search. The ownership filter is enforced at the
+    query level, so a client cannot bypass it with query parameters.
 
     The `search` parameter is bound as a query parameter (`:search`),
-    never interpolated into the SQL text. This is what makes the endpoint
-    resistant to SQL injection: whatever the caller sends is treated as a
-    value, not as code.
-
-    This is the fixed version of the exercise in `docs/vuln-exercise-sqli.md`.
-    The vulnerable version (string interpolation) was merged into `main`
-    deliberately for the exercise, and the difference is documented there.
+    never interpolated into the SQL text. This is the fixed version of
+    the SQL injection exercise.
     """
     query = text(
-        "SELECT id, hostname, ip_address, os, created_at "
-        "FROM assets WHERE hostname LIKE :search ORDER BY id"
+        "SELECT id, hostname, ip_address, os, owner_id, created_at "
+        "FROM assets WHERE owner_id = :owner_id "
+        "AND hostname LIKE :search ORDER BY id"
     )
-    result = db.execute(query, {"search": f"%{search}%"}).fetchall()
+    result = db.execute(
+        query,
+        {"owner_id": current_user.id, "search": f"%{search}%"},
+    ).fetchall()
     return [
         {
             "id": row[0],
             "hostname": row[1],
             "ip_address": row[2],
             "os": row[3],
-            "created_at": row[4],
+            "owner_id": row[4],
+            "created_at": row[5],
         }
         for row in result
     ]
@@ -120,19 +125,25 @@ def list_assets(
 def create_asset(
     payload: AssetCreate,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user),
 ):
-    """Create a new asset from a validated JSON payload."""
+    """
+    Create a new asset owned by the authenticated user.
+
+    The owner is set from the authenticated user, not from the request
+    body. If `owner_id` were a field in `AssetCreate`, a client could
+    create assets owned by other users (mass assignment).
+    """
     asset = models.Asset(
         hostname=payload.hostname,
         ip_address=payload.ip_address,
         os=payload.os,
+        owner_id=current_user.id,
     )
     db.add(asset)
     db.commit()
     db.refresh(asset)
     return asset
-
 
 # =============================================================================
 # Users

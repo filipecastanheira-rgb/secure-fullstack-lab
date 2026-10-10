@@ -7,14 +7,20 @@ attributes into columns and instances into rows.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
 
 class Asset(Base):
-    """A single host/asset tracked in the lab inventory."""
+    """
+    A single host/asset tracked in the lab inventory.
+
+    Each asset is owned by exactly one user. Ownership is the basis of the
+    IDOR demonstration in Phase 7: without an owner, there is no "another
+    user's asset" to attempt to access.
+    """
 
     __tablename__ = "assets"
 
@@ -22,6 +28,11 @@ class Asset(Base):
     hostname: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
     os: Mapped[str] = mapped_column(String(100), nullable=False)
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(UTC),
