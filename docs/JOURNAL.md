@@ -3043,3 +3043,301 @@ fix it. Detection is by header inspection and by the DAST scan.
 
 After these two, the Phase 7 checklist is complete and Phase 8 (detection
 and monitoring) follows.
+
+---
+
+## Session 18 — Phase 7: IDOR exercise
+
+**Goal:** introduce a second vulnerability — this time a logic flaw
+rather than a code pattern — and demonstrate that the CI pipeline cannot
+detect it. The complement to the SQL injection exercise.
+
+The session produced a complete cycle (PR #3 to introduce, PR #4 to fix)
+and the first regression test in the project specifically written to
+enforce an authorisation policy.
+
+### The difference from the SQL injection exercise
+
+The SQL injection exercise is what most people think of when they hear
+"vulnerability". There is a visible flaw: a value is interpolated into a
+query, and the shape of the bug is in the source code. A SAST scanner
+with the right rule finds it. Bandit found it (B608).
+
+IDOR is different. The code is syntactically correct. It uses the ORM
+correctly. There is no interpolation, no `eval`, no `subprocess`, no
+weak hash, no secret. What is missing is a **condition** — a check that
+the code should have but does not. Nothing is wrong; something is absent.
+
+This is the class of vulnerability that SAST cannot detect, and the
+exercise is designed to demonstrate it side by side with the SQL
+injection case.
+
+### Part 1 — Setup
+
+The exercise required a precondition that did not exist: assets needed
+an owner.
+
+The `Asset` model gained an `owner_id` column, a foreign key to
+`users.id`, non-nullable and indexed. The existing rows (3 assets, all
+belonging to the operator) were migrated with a manual `ALTER TABLE`
+followed by an `UPDATE` to assign them to user 1.
+
+**Why manual migration instead of Alembic.** SQLAlchemy's `create_all`
+creates missing tables but does not alter existing ones. Introducing
+Alembic for a single non-nullable column would have added a dependency
+and a migration history for a schema that is still in flux. The manual
+`ALTER TABLE` was sufficient and is documented here so that a future
+reader knows why the migration is not in a migration folder.
+
+The endpoints were updated accordingly:
+
+- `list_assets` filters by `owner_id == current_user.id`
+- `create_asset` sets `owner_id = current_user.id` from the token
+
+The second is a defence against mass assignment: `owner_id` is
+deliberately not a field in `AssetCreate`, so a client cannot create an
+asset owned by another user.
+
+A second user, Joana (role `user`), was created to provide a test
+subject. Two users with separate inventories is the minimum setup for
+the exercise — without it, there is no "another user's asset" to
+attempt to access.
+
+### Part 2 — Introducing the vulnerability
+
+Branch `vuln/idor`, one new endpoint:
+
+    @app.get("/api/assets/{asset_id}", response_model=AssetRead)
+    def get_asset(
+        asset_id: int,
+        db: Session = Depends(get_db),
+        _: models.User = Depends(get_current_user),
+    ):
+        asset = db.query(models.Asset).filter(models.Asset.id == asset_id).first()
+        if asset is None:
+            raise HTTPException(404, "Asset not found.")
+        return asset
+
+The vulnerability is the **absence** of `models.Asset.owner_id ==
+current_user.id` in the filter. The endpoint requires authentication —
+a valid token is necessary to reach it. What is missing is the check on
+the *object* once the caller is authenticated.
+
+The docstring on the vulnerable endpoint states explicitly that this is
+an exercise, why no scanner will detect it, and where the fix will be.
+The commit message (`be911e6`) repeats the reasoning. Anyone reading the
+history cannot mistake this for an accident.
+
+### Part 3 — Confirming the vulnerability
+
+Three requests, each producing the expected result:
+
+| Request                            | User   | Asset | Result |
+|------------------------------------|--------|-------|--------|
+| `GET /api/assets/1` (Filipe's)     | Filipe | 1     | 200 — his asset |
+| `GET /api/assets/4` (Joana's)      | Joana  | 4     | 200 — her asset |
+| `GET /api/assets/1` (Filipe's)     | **Joana** | 1  | **200 — Filipe's asset** |
+
+The third request is the vulnerability. Joana, whose token identifies
+her as user 2, received asset 1 (owned by user 1). The `owner_id` field
+in the response confirms the asset does not belong to her. The endpoint
+returned it anyway.
+
+### Part 4 — What the CI pipeline did
+
+**Six green checks.**
+
+The full pipeline ran against the vulnerable commit. No job failed. The
+vulnerability was present and exploitable, and the CI was clean.
+
+| Job                    | Result | Why it did not detect                 |
+|------------------------|--------|---------------------------------------|
+| Lint (ruff)            | ✅     | Valid Python                          |
+| Tests (pytest)         | ✅     | No test covered cross-user access     |
+| Security (bandit)      | ✅     | **No unsafe pattern to flag**         |
+| Secrets (gitleaks)     | ✅     | No secret involved                    |
+| Frontend lint          | ✅     | Backend-only change                   |
+| DAST (ZAP baseline)    | ✅     | Baseline does not test authorisation  |
+
+**The bandit result is the point of the exercise.** This is the same
+scanner that detected the SQL injection exercise (B608). It did not
+detect IDOR, and it could not: the vulnerable code has no string
+interpolation, no `eval`, no `subprocess`, no weak hash, no secret. It
+has a query missing a condition. There is no bandit rule for "missing
+authorisation check" because that is not a syntactic property — it is a
+property of the policy the code should implement.
+
+**The route policy test also passed.** The test in
+`tests/test_routes_policy.py` verifies that non-public endpoints require
+authentication. The IDOR endpoint does require authentication. The test
+is correct; it simply tests L1 (endpoint authentication) while the
+vulnerability is at L2 (row-level authorisation). The two levels are
+independent, and this exercise makes the distinction concrete.
+
+### Part 5 — The fix
+
+Branch `fix/idor`. Two changes to the endpoint:
+
+**1. Add the ownership filter.**
+
+    asset = (
+        db.query(models.Asset)
+        .filter(
+            models.Asset.id == asset_id,
+            models.Asset.owner_id == current_user.id,
+        )
+        .first()
+    )
+
+**2. Return 404, not 403, for another user's asset.**
+
+This is a design decision worth explaining. 403 Forbidden would say
+"this asset exists, but you cannot see it" — which confirms existence.
+404 Not Found says "there is no asset with this id" — which is
+technically false for the calling user, but indistinguishable from a
+genuinely non-existent id. An attacker who enumerates ids learns only
+which ids belong to them. They learn nothing about other users' assets.
+
+The same principle as the generic login error message
+(`"Invalid email or password."`) — multiple internal cases, one external
+response — applied at the object level rather than the authentication
+level.
+
+### Part 6 — Verification
+
+| Request                                | Before  | After   |
+|----------------------------------------|---------|---------|
+| Filipe → `/api/assets/1` (his)         | 200     | 200     |
+| Joana  → `/api/assets/4` (hers)        | 200     | 200     |
+| **Joana → `/api/assets/1` (Filipe's)** | **200** | **404** |
+
+One row changed. That row is the fix. The two unchanged rows confirm the
+fix did not break the legitimate cases.
+
+### Part 7 — The regression test
+
+`backend/tests/test_asset_authorization.py` — 6 tests:
+
+1. `test_admin_can_read_own_asset` — 200
+2. `test_user_can_read_own_asset` — 200
+3. `test_user_cannot_read_admins_asset` — **404** ← the IDOR regression
+4. `test_admin_cannot_read_users_asset` — 404 (the reverse direction)
+5. `test_unauthenticated_cannot_read_any_asset` — 401
+6. `test_list_shows_only_own_assets` — list filter verification
+
+**Test 3 is the deliverable that matters most.** Without it, the fix
+would be defensible only by the memory of the person who wrote it. With
+it, the policy is enforceable by the pipeline: if the ownership filter
+is removed in a future change, the test fails, and the CI blocks the
+merge.
+
+Test 4 asserts the reverse direction: an admin is not implicitly
+authorised to read every asset. Admin status confers the ability to
+manage *users*, not to bypass ownership. If a future policy change
+grants admins cross-user access, this test fails, and the change becomes
+deliberate rather than accidental.
+
+### Concepts learned
+
+- **The classes of vulnerability split by nature, not by severity.**
+  SQL injection is a code pattern; IDOR is a logic flaw. The split
+  determines what each defence layer can and cannot see. A scanner that
+  is excellent against one class can be entirely blind to the other, and
+  the difference is not "how good" the scanner is.
+- **A missing check is not a syntax error.** Ruff checks syntax and
+  style. Bandit checks patterns. Neither can see what is *not* there.
+  The complement is a test that encodes the policy: "a user must not
+  read another user's asset."
+- **The three-level authorisation model is not academic.** L1
+  (endpoint), L2 (row), L3 (field) are independent. The vulnerable
+  commit implemented L1 and L3 correctly and missed L2. Any single-level
+  check — including the route policy test — passes when the vulnerability
+  is at a different level.
+- **404 vs 403 is a design decision, not a detail.** 404 for "exists but
+  not yours" denies the attacker the confirmation of existence. This
+  applies the same principle as the generic login error, one level lower.
+- **A regression test is the deliverable that turns a fix into a
+  policy.** The fix corrects the behaviour today. The test enforces the
+  policy tomorrow. Both are required.
+- **Non-nullable columns require deliberate migration.** `create_all`
+  does not alter existing tables. For a schema in flux, a manual
+  `ALTER TABLE` is sufficient; the choice is documented so that a future
+  reader does not look for a migration that does not exist.
+- **An unhandled tool path is a hidden failure.** The ruff lint failed
+  in the CI because the local run used `ruff check app/` while the CI
+  used `ruff check .`. Same tool, same version, different scope. The
+  fix is procedural: use the same command locally as in the CI.
+- **The nature of the exercise determines the expected CI outcome.**
+  For SQL injection, a clean CI would have been a failure of the SAST
+  tool. For IDOR, a clean CI is the expected outcome and the point of
+  the exercise. The same green checkmark means different things
+  depending on what was being tested.
+
+### Files changed
+
+- `backend/app/models.py` — `owner_id` column added to `Asset`
+- `backend/app/schemas.py` — `owner_id` exposed in `AssetRead`; not in
+  `AssetCreate` (mass assignment prevention)
+- `backend/app/main.py` — list and create scoped to owner; new
+  `GET /api/assets/{id}` (vulnerable, then fixed)
+- `backend/tests/test_asset_authorization.py` — created (6 tests)
+- `backend/tests/test_routes_policy.py` — unused imports removed
+- `docs/vuln-exercise-idor.md` — created (337 lines)
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `53d779d` | feat(assets): add owner scoping to assets (setup for IDOR exercise) |
+| `be911e6` | vuln(idor): add GET /api/assets/{id} without ownership check   |
+| `bffb2d5` | fix(lint): remove unused imports in test_routes_policy         |
+| `6318675` | Merge pull request #3 (vulnerability)                          |
+| `a75c437` | fix(idor): enforce ownership on GET /api/assets/{id}           |
+| `b883c1d` | docs(vuln): record the IDOR exercise — introduction, detection, and fix |
+| `9600eb5` | Merge pull request #4 (fix)                                    |
+
+### Next step — Phase 7 continues
+
+One more vulnerability exercise remains in Phase 7: **misconfigured
+CORS**.
+
+The exercise will:
+
+1. Reintroduce a permissive CORS policy in the FastAPI application
+   (the middleware was removed in Session 6 when Nginx unified the
+   origin, but it can be added back in a permissive form for the
+   exercise).
+2. Demonstrate the impact with a browser-based attack: a page served
+   from another origin (for example, the Kali VM on a different port)
+   making an authenticated request to the lab API.
+3. Detect it by inspecting the response headers and by observing the
+   behaviour in the browser.
+4. Fix it by removing the permissive policy or replacing it with an
+   explicit allowlist of trusted origins.
+5. Add a regression test that asserts the response does not include
+   `Access-Control-Allow-Origin: *` (or, if a specific origin is
+   allowed, that it is the expected one).
+
+The CORS exercise is different from both previous exercises:
+
+- **Not a code pattern** — the FastAPI middleware is syntactically
+  correct. Ruff and bandit will pass.
+- **Not a logic flaw in the traditional sense** — the code does exactly
+  what it says; the *policy* is what is wrong.
+- **Detectable by header inspection** — a simple `curl -I` reveals the
+  presence of `Access-Control-Allow-Origin: *`. This is the first
+  exercise where a *manual header check* is the primary detection, not
+  an endpoint test.
+- **Potentially detectable by the DAST scan** — the ZAP baseline may
+  flag permissive CORS depending on configuration. If it does, this
+  becomes the first Phase 7 exercise where the pipeline catches the
+  vulnerability. Worth checking and documenting either way.
+
+After the CORS exercise is closed, Phase 7 is complete and Phase 8
+(detection and monitoring) begins. Phase 8 will implement the three
+action items produced by the SQL injection exercise and by the simulated
+incident exercise:
+
+1. Structured logging in FastAPI (JSON).
+2. Alert when the rate limiter begins rejecting requests.
+3. Threshold-based alerting for repeated auth failures per IP.
