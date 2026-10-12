@@ -189,12 +189,13 @@ in exactly two places:
 - [x] DAST: OWASP ZAP baseline against the running lab
 - [x] Six parallel jobs; total runtime ~2 minutes
 
-### Phase 7 — Deliberate vulnerabilities
+### Phase 7 — Deliberate vulnerabilities (complete)
 
-- [x] SQL injection — introduced, detected (bandit B608), fixed, documented
-- [x] IDOR (Insecure Direct Object Reference) — introduced, missed by all scanners, fixed, documented with a regression test
-- [ ] Misconfigured CORS
-- [x] Before/after evidence in `docs/vuln-exercise-sqli.md` and `docs/vuln-exercise-idor.md`
+- [x] SQL injection — introduced, detected by bandit (B608), fixed, documented
+- [x] IDOR — introduced, **missed by all scanners**, fixed, regression test added
+- [x] Misconfigured CORS — introduced, **missed by all scanners**, fixed, regression test added
+- [x] Before/after evidence in `docs/vuln-exercise-{sqli,idor,cors}.md`
+- [x] Confirmed limitation: 1 of 3 vulnerabilities detected by CI; the other 2 required human analysis and written tests
 
 ### Phase 8 — Detection and monitoring
 

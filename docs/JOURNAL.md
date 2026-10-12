@@ -3341,3 +3341,242 @@ incident exercise:
 1. Structured logging in FastAPI (JSON).
 2. Alert when the rate limiter begins rejecting requests.
 3. Threshold-based alerting for repeated auth failures per IP.
+
+---
+
+## Session 19 — Phase 7: CORS exercise, and Phase 7 closure
+
+**Goal:** complete the third and final vulnerability exercise in Phase 7
+(misconfigured CORS), and close the phase.
+
+The exercise followed the same two-PR pattern as the previous ones: PR #5
+introduced the vulnerability, PR #6 fixed it. The technical work was
+smaller than the previous two exercises; the value is in what the
+comparison across the three exercises produces.
+
+### Part 1 — The vulnerability
+
+The `CORSMiddleware` was added with:
+
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+
+The combination of the wildcard with credentials is the vulnerable
+pattern. It is deceptive because Starlette does not send the literal `*`
+when credentials are enabled — the browser would reject it. Starlette
+echoes the specific origin of the request instead:
+
+    access-control-allow-origin: https://evil.example.com
+    access-control-allow-credentials: true
+
+The response looks like a narrow allowlist. It is functionally a
+wildcard. Recognising this requires knowing how the framework implements
+the wildcard, not just what the configuration file says.
+
+### Part 2 — Verification
+
+Two `curl` requests were made, with different `Origin` headers:
+
+- `Origin: https://example.com` → echoed in the response
+- `Origin: https://evil.example.com` → echoed in the response
+
+The two responses were structurally identical. The middleware does not
+distinguish between the legitimate origin and the attacker origin. It
+echoes whichever origin the caller supplies.
+
+### Part 3 — Honest impact assessment
+
+**In theory, the impact is severe.** A page on `evil.example.com` can
+make authenticated cross-origin requests on behalf of a user currently
+logged into the application. Every action the user can perform, the
+attacker can perform.
+
+**In this specific application, the impact is currently limited.** The
+application uses JWT in the `Authorization` header, not cookies. The
+browser does not attach the JWT automatically to cross-origin requests,
+and JavaScript running on `evil.example.com` cannot read the JWT stored
+on `192.168.1.173` — same-origin policy prevents it.
+
+The vulnerability is **latent**: the configuration is wrong, but the
+current architecture does not provide the conditions for exploitation.
+
+**Why the finding still matters.** Three reasons recorded in the
+document:
+
+1. The configuration violates the principle of least privilege
+   regardless of current exploitability.
+2. The migration to `HttpOnly` cookies is planned in the password
+   policy and threat model. The moment that migration happens, the CORS
+   misconfiguration becomes immediately exploitable.
+3. The subtlety — the response headers look restrictive but are not —
+   is the specific lesson of the exercise.
+
+This is the first exercise in Phase 7 where the impact assessment is not
+"confirmed exploitable". The documentation states the limitation
+explicitly, rather than overstating the finding. Overstating a finding
+is a form of dishonesty that a reviewer notices.
+
+### Part 4 — What the CI pipeline did
+
+**Six green checks.** The full pipeline ran on the vulnerable commit
+without a single failure.
+
+| Job                 | Result | Why it did not detect                        |
+|---------------------|--------|----------------------------------------------|
+| ruff                | ✅     | Valid Python                                 |
+| pytest              | ✅     | No test sent an `Origin` header              |
+| bandit              | ✅     | Configuration, not a code pattern            |
+| gitleaks            | ✅     | No secret                                    |
+| Frontend lint       | ✅     | Backend-only change                          |
+| **ZAP baseline**    | ✅     | **Sends no `Origin`, so the middleware never engages** |
+
+**The ZAP result is worth its own note.** The baseline scan sends plain
+HTTP requests. Without an `Origin` header, the CORS middleware does not
+emit CORS headers, and the server looks the same with or without the
+permissive configuration. A scanner configured to send `Origin` headers,
+or an active scan, would have had a chance to detect this. The baseline
+configuration in this pipeline did not.
+
+### Part 5 — The fix
+
+The `CORSMiddleware` was **removed entirely**, not replaced with a
+restrictive allowlist.
+
+**Why removal and not restriction.** The application is served by Nginx
+on a single origin. Frontend and API share `https://192.168.1.173`.
+There are no cross-origin requests. A restrictive allowlist would be
+configuring for a scenario that does not exist — a form of security
+theatre.
+
+The source file now carries a comment explaining the decision, so that a
+future developer who needs to add CORS finds the correct pattern
+(explicit allowlist, no wildcards) rather than the convenient one.
+
+### Part 6 — Verification of the fix
+
+The same attack request, against the fixed version:
+
+    $ curl -s -i -H "Origin: https://evil.example.com" \
+        http://127.0.0.1:8000/api/hello
+    HTTP/1.1 200 OK
+    server: uvicorn
+    content-type: application/json
+
+No CORS headers of any kind. The browser now blocks the cross-origin
+read at the same-origin policy level.
+
+### Part 7 — The regression test
+
+`tests/test_cors_policy.py` — 2 tests:
+
+1. `test_api_does_not_emit_cors_headers` — a request with an `Origin`
+   header must not receive CORS response headers.
+2. `test_api_does_not_emit_cors_preflight_headers` — an OPTIONS request
+   with `Access-Control-Request-Method` must not receive CORS headers.
+
+Same pattern as the IDOR exercise: the test encodes the policy, so that
+the CI blocks a future reintroduction of the permissive configuration.
+
+### Part 8 — Phase 7 closure
+
+The three exercises are now complete. The comparison is what makes the
+phase valuable:
+
+| Aspect                     | SQL Injection | IDOR       | CORS      |
+|----------------------------|---------------|------------|-----------|
+| Nature                     | Code pattern  | Logic flaw | Config    |
+| **Detected by a scanner**  | ✅ bandit     | ❌         | ❌        |
+| **CI turned red?**         | ✅            | ❌         | ❌        |
+| Regression test added      | ❌ (gap)      | ✅ (6)     | ✅ (2)    |
+
+**One of three was detected automatically. Two of three were not, and
+neither could have been.** This is not a failure of the pipeline. It is
+a demonstration of the boundary between what pattern-based scanners can
+do and what requires human analysis, written tests, and policy
+decisions.
+
+The portfolio value is in the boundary. A repository that claims "the
+code is secure" is not falsifiable. A repository that documents "here is
+what the scanners catch, here is what they miss, and here is how the
+gaps are covered" is a demonstration of engineering judgment.
+
+### Part 9 — An honest gap in the phase
+
+One inconsistency remains: the **SQL injection fix does not have a
+regression test.** The IDOR and CORS fixes both added one. The SQL
+injection fix was verified manually (the same attack returns an empty
+list after the fix), but no automated test encodes the check.
+
+This is recorded in `docs/vuln-exercise-cors.md` §9 as action item 1. It
+is a small task — send the payload, assert the response — and it should
+be completed before Phase 7 is formally closed in the README.
+
+### Concepts learned
+
+- **A framework's behaviour can be less obvious than its configuration
+  suggests.** The `["*"]` + credentials pattern does not produce a
+  literal wildcard in the response. It produces an echoed origin that
+  looks like a specific allowlist. Knowing what the framework actually
+  does requires reading the response, not just the source.
+- **Latent risk is a valid category.** The configuration is wrong. The
+  architecture makes it currently unexploitable. Both statements are
+  true, and both belong in the analysis. Calling it "exploitable" would
+  be dishonest; calling it "not a problem" would miss the point.
+- **Configuration drift is a real class of finding.** CORS is a
+  configuration, not code. Ruff and bandit do not check configuration.
+  The defence is either a test that knows what the configuration should
+  look like, or a manual review process that includes configuration
+  files.
+- **The scanner's coverage is determined by what it sends.** The ZAP
+  baseline sends no `Origin` header, so the CORS middleware never
+  engages. A scanner that sent `Origin` headers would have seen the
+  response with CORS headers. The coverage is not a property of the
+  scanner alone — it is a property of the scanner and the request it
+  makes.
+- **Three exercises produce a map, not a list.** A single exercise says
+  "I can find and fix one thing". Three exercises, chosen to span
+  distinct classes, say "I know the shape of the space — which defences
+  cover which classes, and where the boundaries are".
+
+### Files changed
+
+- `backend/app/main.py` — CORS middleware added, then removed
+- `backend/tests/test_cors_policy.py` — created (2 tests)
+- `docs/vuln-exercise-cors.md` — created (344 lines)
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `6b4e975` | vuln(cors): add permissive CORS policy with credentials        |
+| `8360c1f` | Merge pull request #5 (vulnerability)                          |
+| `cb36f9c` | fix(cors): remove permissive CORS middleware                   |
+| `520699a` | Merge pull request #6 (fix)                                    |
+
+### Next step
+
+Phase 7 is functionally complete pending one thing: the missing
+regression test for the SQL injection fix.
+
+The plan for the next session:
+
+1. Add the SQL injection regression test (small, ~15 min).
+2. Update the README to mark Phase 7 as complete (SQLi, IDOR, CORS).
+3. Begin Phase 8 — detection and monitoring — which is the natural
+   follow-up: the three exercises produced action items that require
+   logging and alerting infrastructure to close.
+
+Phase 8 will implement:
+
+- Structured JSON logging in FastAPI (every request: timestamp, user,
+  endpoint, status, duration).
+- `auditd` with watches on `/etc/`, `~/secure-fullstack-lab/backend/`,
+  and `~/pki/`.
+- A correlation script that detects repeated auth failures.
+- An alert when the rate limiter begins rejecting requests.
+
+The last item is the one identified by the simulated incident exercise
+(Session 15): the rate limiter blocks abuse silently, with no signal to
+the operator. Phase 8 is where that gap closes.
