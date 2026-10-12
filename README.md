@@ -191,11 +191,12 @@ in exactly two places:
 
 ### Phase 7 — Deliberate vulnerabilities (complete)
 
-- [x] SQL injection — introduced, detected by bandit (B608), fixed, documented
+- [x] SQL injection — introduced, detected by bandit (B608), fixed, **regression test added**
 - [x] IDOR — introduced, **missed by all scanners**, fixed, regression test added
 - [x] Misconfigured CORS — introduced, **missed by all scanners**, fixed, regression test added
 - [x] Before/after evidence in `docs/vuln-exercise-{sqli,idor,cors}.md`
 - [x] Confirmed limitation: 1 of 3 vulnerabilities detected by CI; the other 2 required human analysis and written tests
+- [x] Every exercise has a regression test (33 tests in the suite)
 
 ### Phase 8 — Detection and monitoring
 
