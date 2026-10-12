@@ -16,6 +16,7 @@ reintroduced with an explicit origin allowlist.
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -56,6 +57,25 @@ app = FastAPI(
     title="Secure Fullstack Lab API",
     version="0.4.0",
     lifespan=lifespan,
+)
+
+# -----------------------------------------------------------------------------
+# INTENTIONALLY VULNERABLE — Phase 7 exercise.
+#
+# This CORS configuration allows any origin to send requests, including
+# requests that carry credentials. It exists only to demonstrate the risk
+# of a permissive CORS policy, to be detected by header inspection, and to
+# be fixed in a follow-up commit on the branch fix/cors.
+#
+# DO NOT copy this pattern. The safe pattern is an explicit allowlist of
+# known origins, without wildcards.
+# -----------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
