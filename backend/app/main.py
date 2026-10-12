@@ -16,7 +16,6 @@ reintroduced with an explicit origin allowlist.
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -59,24 +58,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# -----------------------------------------------------------------------------
-# INTENTIONALLY VULNERABLE — Phase 7 exercise.
+# CORS is intentionally not configured here.
 #
-# This CORS configuration allows any origin to send requests, including
-# requests that carry credentials. It exists only to demonstrate the risk
-# of a permissive CORS policy, to be detected by header inspection, and to
-# be fixed in a follow-up commit on the branch fix/cors.
+# The application is served by Nginx on a single origin
+# (https://192.168.1.173), with the frontend and the API under the same
+# hostname. There are no cross-origin requests, so no CORS policy is
+# required.
 #
-# DO NOT copy this pattern. The safe pattern is an explicit allowlist of
-# known origins, without wildcards.
-# -----------------------------------------------------------------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# If the architecture changes and the frontend is served from a different
+# origin in the future, CORS must be reintroduced with an explicit
+# allowlist of known origins. Wildcards combined with
+# `allow_credentials=True` are not acceptable — see
+# `docs/vuln-exercise-cors.md` for the demonstration of why.
 
 
 @app.get("/")
