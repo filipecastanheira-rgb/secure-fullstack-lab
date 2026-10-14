@@ -13,7 +13,7 @@ cryptographic primitives, with no knowledge of FastAPI) and `main.py`
 frameworks, primitives, and application logic in the same module.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -33,6 +33,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ) -> models.User:
@@ -81,6 +82,11 @@ def get_current_user(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None or not user.is_active:
         raise _unauthorized
+
+    # Store the user id on the request so the logging middleware can
+    # include it in the structured log for this request. The middleware
+    # runs before dependencies and cannot read the JWT itself.
+    request.state.user_id = user.id
 
     return user
 

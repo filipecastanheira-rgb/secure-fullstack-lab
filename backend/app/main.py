@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.database import Base, engine, get_db
 from app.dependencies import get_current_user, require_admin
+from app.logging_config import RequestLoggingMiddleware, setup_logging
 from app.schemas import (
     AssetCreate,
     AssetRead,
@@ -52,11 +53,21 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Configure structured JSON logging before the app is created. Every
+# request will produce one JSON record on stdout, which systemd forwards
+# to journald. See app/logging_config.py for the field list.
+setup_logging()
+
 app = FastAPI(
     title="Secure Fullstack Lab API",
     version="0.4.0",
     lifespan=lifespan,
 )
+
+# Log one structured record per HTTP request. The middleware runs after
+# the response is generated, so it can capture the status code and the
+# duration; the user id is set by get_current_user via request.state.
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS is intentionally not configured here.
 #
