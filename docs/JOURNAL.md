@@ -3580,3 +3580,276 @@ Phase 8 will implement:
 The last item is the one identified by the simulated incident exercise
 (Session 15): the rate limiter blocks abuse silently, with no signal to
 the operator. Phase 8 is where that gap closes.
+
+---
+
+## Session 20 — Phase 8: structured logging and auditd
+
+**Goal:** start Phase 8 (detection and monitoring) by giving the system
+two capabilities it did not have: machine-readable HTTP request logs,
+and kernel-level audit of file and privilege events.
+
+Both are prerequisites for the rest of the phase. The correlation script
+(sub-task 4) will read the JSON logs. The alert for the rate limiter
+(sub-task 5) will key off the status codes those logs record. Without
+structured logs, both would require parsing free-form text.
+
+### Part 1 — Structured JSON logging
+
+The default Uvicorn access log emits one line of human-readable text per
+request:
+
+    INFO:     127.0.0.1:41440 - "GET /api/hello HTTP/1.1" 200 OK
+
+This is readable, and useless for analysis. Filtering by user, computing
+latency percentiles, or correlating a burst of 401s with a source IP all
+require parsing a free-form string. A log aggregation tool cannot do it
+without a schema.
+
+**The replacement.** A `JsonFormatter` and a `RequestLoggingMiddleware`
+in `app/logging_config.py` produce one JSON object per request:
+
+    {"timestamp": "2026-10-14T20:29:56.367394+00:00", "level": "info",
+     "logger": "app.request", "message": "http_request",
+     "event": "http_request", "method": "GET", "path": "/api/hello",
+     "query": "", "status_code": 200, "duration_ms": 16.69,
+     "client_ip": "127.0.0.1", "user_agent": "curl/8.18.0",
+     "user_id": null}
+
+**Fields and their origin.**
+
+| Field         | Origin                                              |
+|---------------|-----------------------------------------------------|
+| `timestamp`   | UTC, from `datetime.now(timezone.utc)`              |
+| `level`       | logging level (lowercase)                           |
+| `logger`      | the Python logger name (`app.request`)              |
+| `event`       | fixed string, `http_request`, for filtering         |
+| `method`      | request method                                      |
+| `path`        | request path, no query string                        |
+| `query`       | query string (separate field, not merged with path) |
+| `status_code` | response status                                     |
+| `duration_ms` | monotonic clock, `time.perf_counter()`              |
+| `client_ip`   | `X-Real-IP` header (Nginx), else socket peer        |
+| `user_agent`  | `User-Agent` header                                 |
+| `user_id`     | from `request.state`, set by `get_current_user`     |
+
+**Why `time.perf_counter()` and not `time.time()`.** The latter is
+wall-clock and can jump backwards on NTP adjustment. `perf_counter()` is
+monotonic and intended for measuring durations.
+
+**The `user_id` integration.** The middleware runs **before** the
+dependencies. At that point the JWT has not been validated and the
+application does not yet know who the caller is. The dependency
+`get_current_user` writes the resolved user to `request.state.user_id`
+after validation, and the middleware reads that attribute after the
+response is generated. This is the standard FastAPI pattern for
+propagating request-scoped information between the dependency layer and
+the middleware layer.
+
+**The `client_ip` fallback.** Nginx sets `X-Real-IP` on every proxied
+request. When the API is reached directly on the loopback interface
+(during tests or local curl), the header is absent and the socket peer
+address is used instead. Both cases are correct and both appear in the
+log.
+
+**Deliberately not logged.** Request body, response body, the
+`Authorization` header. The JWT is never written to disk. This is
+recorded in `docs/password-policy.md` §3. The decision is not a
+limitation of the middleware — it is the middleware's design.
+
+**Disabling the Uvicorn access log.** With the middleware emitting JSON,
+the default Uvicorn log would duplicate every request. The systemd unit
+gained `--no-access-log`. The startup lines (`Started server process`,
+`Uvicorn running on ...`) remain — they are not per-request and are
+useful as-is.
+
+**A limitation that was discovered, not fixed.** The login endpoint
+reports `"user_id": null` even on success. The reason is that the login
+endpoint does not use `get_current_user` — it is a public endpoint that
+authenticates the user inside its own body. The middleware therefore
+never sees a `request.state.user_id`. To fix this, the login endpoint
+would have to set `request.state.user_id = user.id` after
+authentication. This is a small task, recorded here as an action item,
+and not done in this session to keep the scope of the change contained.
+
+### Part 2 — What the logs revealed about the application
+
+Two requests, timed by the middleware, produced an observation that no
+human review would have surfaced:
+
+| Endpoint            | Duration |
+|---------------------|----------|
+| POST /api/auth/login| 1171 ms  |
+| GET /api/users/me   | 49 ms    |
+| GET /api/users/me   | 45 ms    |
+
+The login endpoint is approximately 25× slower than the others. The
+cause is argon2id: each login verifies a password hash, and each
+verification consumes ~64 MB of RAM and 3 iterations of work. The cost
+is intentional — it is the property that makes GPU-based cracking
+expensive. A legitimate user pays it once. An attacker pays it for every
+guess, which is why the rate limiter (Phase 4) matters as much as the
+hash parameters (Phase 4).
+
+**Structured logging turned this from an invisible property into a
+recorded number.** A text log would show `200 OK` for both requests and
+say nothing about the difference. This is the first concrete return on
+the investment in logging — before any correlation script or alert is
+written.
+
+### Part 3 — auditd
+
+**Why auditd, and not just the existing logs.** The system already had
+three log sources:
+
+| Source                 | What it records                       |
+|------------------------|---------------------------------------|
+| Nginx access log       | HTTP requests arriving at the edge    |
+| FastAPI structured log | HTTP requests the application handles |
+| journalctl             | Systemd service events                |
+
+What none of them recorded: **changes to files on the host**. If an
+attacker (or a mistake) modified `/etc/ssh/sshd_config`, deleted
+`lab.db`, or read the CA private key, nothing in those three sources
+would show it. The Nginx log would show the request that caused it (if
+it went through the web), but not the filesystem consequence.
+
+`auditd` fills the gap. It records kernel-level events: file opens,
+writes, attribute changes, and `execve` calls with specific filters.
+
+**The rules.** Fifteen rules, in
+`/etc/audit/rules.d/secure-fullstack.rules`, versioned in
+`deploy/hardening/audit-rules.conf`.
+
+**Watch type: writes vs reads.**
+
+For `/etc/` and its subdirectories, the rule is `-p wa` (write +
+attribute). Reads are deliberately excluded: every process reads
+`/etc/passwd`, `/etc/hosts`, and others; a read watch would produce
+millions of events per hour with no security value. Writes are what
+matter for integrity, and writes are rare.
+
+For `~/pki/`, the rule is `-p rwa` (read, write, attribute). The
+directory contains a handful of files, and the private key of the CA is
+the single most critical asset in the lab. Any read of that directory is
+worth knowing about, and the volume is manageable.
+
+**The `privilege_escalation` rule.** This is a syscall-level rule, not a
+file watch:
+
+    -a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=-1 -k privilege_escalation
+
+The filters:
+
+- `arch=b64` — 64-bit syscalls only (the alternative would double every
+  event on a 64-bit system)
+- `execve` — process execution
+- `euid=0` — the process runs as root
+- `auid>=1000` — the original login user is a human (system users have
+  lower IDs)
+- `auid!=-1` — exclude processes with no login session (daemons,
+  kernel threads)
+
+The combination captures exactly: **a human escalated to root**. Not the
+system's own root processes, not a boot process — a person running
+`sudo`. This is the trigger any investigation starts from.
+
+**The `failure` mode.** `auditctl -s` reports `failure 1`, which is not
+an error — it is the mode. Three modes exist:
+
+- `0` (silent) — audit failures are ignored
+- `1` (printk) — audit failures are written to the kernel log (default)
+- `2` (panic) — audit failures reboot the system
+
+`printk` is the correct default. `panic` is used in high-assurance
+environments where the alternative — losing an audit event — is worse
+than a reboot. It carries its own risk: a flood of audit events could
+cause an unintended reboot, which is a denial of service by design. For
+this lab, `printk` is right.
+
+### Part 4 — Verification
+
+**Privilege escalation:**
+
+    $ sudo ls /root
+    $ sudo ausearch -k privilege_escalation --start recent
+
+Produces records with `auid=1000`, `euid=0`, `comm="ls"`, and
+`key="privilege_escalation"`. The audit trail now shows who escalated,
+what they ran, and when.
+
+**File write:**
+
+    $ sudo touch /etc/ssh/sshd_config.d/test.txt
+    $ sudo rm /etc/ssh/sshd_config.d/test.txt
+    $ sudo ausearch -k ssh_config_d --start recent
+
+Produces two records with `nametype=CREATE` and `nametype=DELETE`,
+attributed to `auid=1000`, `comm="touch"` and `comm="rm"`. Any future
+write to that directory — including an attempt to re-enable password
+authentication in `sshd_config` — will leave the same trace.
+
+### Concepts learned
+
+- **Logs are a schema, not a message.** Text logs are for humans to
+  read interactively. Structured logs are for machines to filter,
+  aggregate, and correlate. The same event, in two formats, has very
+  different value when something has to be found later.
+- **The middleware / dependency boundary requires explicit
+  propagation.** Middleware runs before dependencies, so it cannot read
+  the JWT. `request.state` is the mechanism for the dependency layer to
+  hand information back to the middleware after the response.
+- **Measuring reveals what review does not.** The argon2id cost was
+  known — it was chosen deliberately in Phase 4. Seeing it as a number
+  (1171 ms against 49 ms) is different from knowing it in the abstract.
+  A structured log turns "this should be slow" into "this is how slow,
+  and it is in the right place".
+- **Watches differentiate by direction, not only by path.** Reads and
+  writes on the same file have very different meanings and very
+  different volumes. Configuring reads on `/etc/` would flood the audit
+  log; configuring only writes leaves the events that matter.
+- **The failure mode of an audit system is a design decision.** `panic`
+  is tempting for its strong guarantee. It is also a denial-of-service
+  vector. `printk` is the compromise that keeps auditing useful without
+  letting it take the system down.
+- **What is *not* logged is part of the design.** The middleware does
+  not capture request bodies or the `Authorization` header. This is
+  stated in the code and in the policy, so that a future contributor
+  who wants to "improve logging" finds the reasoning and does not
+  silently reintroduce the leak.
+
+### Files changed
+
+- `backend/app/logging_config.py` — created
+- `backend/app/dependencies.py` — writes `request.state.user_id`
+- `backend/app/main.py` — calls `setup_logging()`, adds the middleware
+- `deploy/systemd/secure-fullstack-api.service` — `--no-access-log`
+- `deploy/hardening/audit-rules.conf` — created (15 rules)
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `9678a3b` | feat(logging): add structured JSON logging for HTTP requests   |
+| `ba5d79f` | chore(deploy): sync systemd unit with --no-access-log flag     |
+| `0bc409b` | feat(monitoring): add auditd rules for sensitive paths         |
+
+### Next step — Phase 8 continues
+
+Three sub-tasks remain in Phase 8:
+
+1. **GoAccess** — a terminal dashboard for the Nginx access log,
+   giving real-time visibility into HTTP traffic at the edge.
+2. **Correlation script** — a script that reads the structured logs and
+   surfaces patterns that are worth attention (repeated 401s per IP,
+   bursts of 429s, requests from unexpected user agents). This is the
+   script that closes the finding from the simulated incident exercise
+   (Session 15): the rate limiter blocks abuse silently, and nothing
+   reports when it acts.
+3. **Alert when the rate limiter fires** — the specific case of the
+   correlation script that watches for the transition from 200/401 to
+   429 in the Nginx log, which is the signature of the rate limiter
+   doing its job.
+
+After these three, Phase 8 is complete and Phase 9 (configuration as
+code with Ansible) begins.
