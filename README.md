@@ -198,13 +198,36 @@ in exactly two places:
 - [x] Confirmed limitation: 1 of 3 vulnerabilities detected by CI; the other 2 required human analysis and written tests
 - [x] Every exercise has a regression test (33 tests in the suite)
 
-### Phase 8 — Detection and monitoring
+### Phase 8 — Detection and monitoring (in progress)
 
-- [ ] Structured JSON logging in FastAPI
-- [ ] auditd on the host
-- [ ] GoAccess for Nginx access logs
+- [x] Structured JSON logging in FastAPI
+- [x] auditd on the host (15 rules, including privilege escalation)
+- [x] GoAccess for Nginx access logs (report generated; not served publicly)
 - [ ] Correlation script: detect repeated auth failures and suspicious patterns
+- [ ] Alert when the rate limiter begins rejecting requests
 - [ ] Attack scenarios executed from Kali, with what the logs show
+
+### Known gaps
+
+Items acknowledged as incomplete. Recorded here so they are visible
+rather than silently pending.
+
+- [ ] **Frontend does not authenticate.** The backend requires a JWT on
+  every asset endpoint (Phase 4), but the Vue frontend still calls those
+  endpoints without credentials and receives 401. The UI shows
+  "Could not load assets: HTTP 401". A login form and a request
+  interceptor for the token are needed. Planned as part of a future
+  "Phase 4b" or the final polish phase.
+- [ ] **Login endpoint logs user_id: null on success.** The structured
+  logging middleware reads `request.state.user_id`, which is only set by
+  `get_current_user`. The login endpoint does not use that dependency
+  (it is public), so successful logins are not attributed in the logs.
+  Small fix: the login endpoint should set `request.state.user_id` after
+  authenticating the user.
+- [ ] **Refresh token revocation is not implemented.** A leaked refresh
+  token remains valid until it is replaced by the next legitimate
+  refresh. A token version counter per user, or a persistent denylist,
+  would close this. Noted since Phase 4; not yet scheduled.
 
 ### Phase 9 — Configuration as code
 
