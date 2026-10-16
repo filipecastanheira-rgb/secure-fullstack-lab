@@ -1,0 +1,16 @@
+[Unit]
+Description=Correlation check for the Secure Fullstack Lab
+Documentation=file:///home/filipe/secure-fullstack-lab/deploy/monitoring/README.md
+After=nginx.service secure-fullstack-api.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/home/filipe/secure-fullstack-lab/deploy/monitoring/correlation-check.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=correlation-check
+
+[Install]
+WantedBy=multi-user.target
