@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+#
+# Correlation check for the Secure Fullstack Lab.
+#
+# Reads TWO log sources and looks for patterns that deserve attention:
+#
+#   1. Nginx access log (COMBINED format) — what arrived at the edge,
+#      including requests refused by the rate limiter (429) which never
+#      reach the application.
+#
+#   2. FastAPI structured log (JSON) — what the application handled,
+#      including authenticated requests with a user id, and application
+#      errors.
+#
+# Neither source is complete on its own. The rate limiter acts at the
+# Nginx layer; when it blocks a request, the application never sees it.
+# A detection script that reads only the FastAPI log would miss every
+# rate-limited request. A script that reads only the Nginx log would
+# miss the user id associated with an application error.
+#
+# The two are correlated by time window, not by request id (this lab does
+# not propagate request ids). For the alert classes implemented here,
+# that is sufficient.
+#
+# Alerts are written to /var/log/secure-fullstack/alerts.log and to
+# stdout (which systemd captures into the journal for this unit).
+
+set -euo pipefail
+
+# --- Configuration ----------------------------------------------------------
+
+LOOKBACK="5 minutes ago"
+API_UNIT="secure-fullstack-api.service"
+NGINX_LOG="/var/log/nginx/secure-fullstack.access.log"
+ALERTS_LOG="/var/log/secure-fullstack/alerts.log"
+
+THRESHOLD_429=10         # rate-limited requests at the Nginx edge
+THRESHOLD_401_PER_IP=20  # failed auths from a single IP (from FastAPI)
+THRESHOLD_5XX=5          # server errors of any kind (from FastAPI)
+
+# --- Setup ------------------------------------------------------------------
+
+mkdir -p "$(dirname "${ALERTS_LOG}")"
+touch "${ALERTS_LOG}"
+chmod 640 "${ALERTS_LOG}"
+
+emit_alert() {
+    local category="$1"
+    local message="$2"
+    local details="$3"
+    local timestamp
+    timestamp="$(date --iso-8601=seconds)"
+
+    printf '%s [%s] %s\n' "${timestamp}" "${category}" "${message}" \
+        >> "${ALERTS_LOG}"
+    if [ -n "${details}" ]; then
+        printf '    %s\n' "${details}" >> "${ALERTS_LOG}"
+    fi
+
+    echo "ALERT [${category}] ${message}"
+    [ -n "${details}" ] && echo "    ${details}"
+}
+
+# --- Source 1: Nginx access log (edge) --------------------------------------
+
+# GoAccess, awk, and friends operate on the file. We use awk to filter by
+# status code and by time window.
+#
+# NOTE: this counts every 429 in the current file, not just the last
+# LOOKBACK. The Nginx log rotates daily (see /etc/logrotate.d/nginx),
+# so the imprecision is bounded to 24 hours. A stricter implementation
+# would parse the timestamp and filter by time; see README for notes.
+
+if [ -r "${NGINX_LOG}" ]; then
+    # 429s — the rate limiter fired. These requests never reached FastAPI.
+    COUNT_429="$(awk '$9 == 429' "${NGINX_LOG}" | wc -l)"
+    if [ "${COUNT_429}" -gt "${THRESHOLD_429}" ]; then
+        TOP_PATHS="$(awk '$9 == 429 {print $7}' "${NGINX_LOG}" \
+            | sort | uniq -c | sort -rn | head -3 \
+            | awk '{print $2" ("$1")"}' | paste -sd, -)"
+        TOP_IPS="$(awk '$9 == 429 {print $1}' "${NGINX_LOG}" \
+            | sort | uniq -c | sort -rn | head -3 \
+            | awk '{print $2" ("$1")"}' | paste -sd, -)"
+        emit_alert "429_BURST" \
+            "${COUNT_429} requests were rate-limited at the Nginx edge" \
+            "top paths: ${TOP_PATHS}; top IPs: ${TOP_IPS}"
+    fi
+else
+    echo "Nginx log not readable: ${NGINX_LOG}" >&2
+fi
+
+# --- Source 2: FastAPI structured log (application) -------------------------
+
+LOG_JSON="$(journalctl -u "${API_UNIT}" --since "${LOOKBACK}" --no-pager -o cat 2>/dev/null \
+    | grep '"event": "http_request"' \
+    || true)"
+
+if [ -n "${LOG_JSON}" ]; then
+
+    # 401s by source IP — credential guessing against the application.
+    echo "${LOG_JSON}" \
+        | jq -r 'select(.status_code == 401) | .client_ip' \
+        | sort | uniq -c | sort -rn \
+        | while read -r count ip; do
+            if [ "${count}" -gt "${THRESHOLD_401_PER_IP}" ]; then
+                emit_alert "401_BURST" \
+                    "${count} failed authentications from ${ip}" \
+                    ""
+            fi
+        done
+
+    # 5xx — application errors. Not an attack, but a signal.
+    COUNT_5XX="$(echo "${LOG_JSON}" | jq -r 'select(.status_code >= 500) | .path' | wc -l)"
+    if [ "${COUNT_5XX}" -gt "${THRESHOLD_5XX}" ]; then
+        PATHS_5XX="$(echo "${LOG_JSON}" | jq -r 'select(.status_code >= 500) | .path' \
+            | sort | uniq -c | sort -rn | awk '{print $2" ("$1")"}' | paste -sd, -)"
+        emit_alert "5XX_BURST" \
+            "${COUNT_5XX} server errors in the last ${LOOKBACK}" \
+            "paths: ${PATHS_5XX}"
+    fi
+fi
+
+exit 0
