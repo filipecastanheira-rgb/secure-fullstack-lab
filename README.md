@@ -198,14 +198,15 @@ in exactly two places:
 - [x] Confirmed limitation: 1 of 3 vulnerabilities detected by CI; the other 2 required human analysis and written tests
 - [x] Every exercise has a regression test (33 tests in the suite)
 
-### Phase 8 — Detection and monitoring (in progress)
+### Phase 8 — Detection and monitoring (complete)
 
 - [x] Structured JSON logging in FastAPI
 - [x] auditd on the host (15 rules, including privilege escalation)
 - [x] GoAccess for Nginx access logs (report generated; not served publicly)
-- [ ] Correlation script: detect repeated auth failures and suspicious patterns
-- [ ] Alert when the rate limiter begins rejecting requests
-- [ ] Attack scenarios executed from Kali, with what the logs show
+- [x] Correlation script: reads Nginx and FastAPI logs to detect abuse patterns
+- [x] Alert when the rate limiter begins rejecting requests (systemd timer, 5-min cadence)
+- [x] Attack scenarios executed with what the logs show (`429_BURST` alert from a simulated credential attack)
+- [x] Systemd timers for automatic execution (GoAccess hourly, correlation every 5 minutes)
 
 ### Known gaps
 

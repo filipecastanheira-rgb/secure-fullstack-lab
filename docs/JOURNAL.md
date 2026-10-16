@@ -3853,3 +3853,236 @@ Three sub-tasks remain in Phase 8:
 
 After these three, Phase 8 is complete and Phase 9 (configuration as
 code with Ansible) begins.
+
+---
+
+## Session 21 — Phase 8: GoAccess, correlation check, and closing the loop
+
+**Goal:** finish Phase 8 by delivering the two remaining detection
+capabilities — a dashboard view of Nginx traffic, and an automatic alert
+when the rate limiter fires.
+
+### Part 1 — GoAccess
+
+[GoAccess](https://goaccess.io/) parses the Nginx access log and produces
+a self-contained HTML report: visitor hosts, requested files, status
+codes, user agents, bandwidth.
+
+**The first attempt failed, and the failure was informative.** Running
+GoAccess against the log produced output of `{0} @ {0/s}` and no visible
+progress. The assumption was that the tool had not parsed the file. The
+`ls` on the output file contradicted this: the report had been generated,
+with a size of ~720 KB. The `{0}` in the terminal was a cosmetic detail
+of the counters, not a sign of failure.
+
+**The lesson.** A tool that produces output on stdout is not necessarily
+reporting its state accurately. Verifying the artefacts (the generated
+files) is more reliable than reading the progress line.
+
+**Why the report is not served.** Two reasons, both valid:
+
+1. **The report is sensitive.** It contains client IPs, request paths,
+   and user agents. On an Internet-facing deployment this is exactly
+   the class of data that helps an attacker profile the application.
+2. **The CSP blocks it.** The application enforces `script-src 'self'`.
+   The GoAccess report uses inline JavaScript. Serving it through Nginx
+   would require weakening the CSP for one path — which would affect
+   the application's response headers too.
+
+The decision was to keep the report off the web server entirely:
+generated to `/var/lib/goaccess/report.html`, mode `640`, owner
+`root:root`. Access is via the host or by copying off-band. The CSP
+stays strict. **The security control determined the architecture, not
+the other way around.**
+
+**Automation.** A script
+(`deploy/monitoring/generate-goaccess-report.sh`) generates the report
+with two properties:
+
+- **Fails safe on an empty log.** If the log is empty (at boot, after
+  rotation), the script exits cleanly with a message, rather than
+  producing an empty report.
+- **Atomic rename.** The report is generated to a temporary `.html`
+  file and renamed to the final name. A reader never sees a half-written
+  report.
+
+A systemd timer runs it hourly (`OnCalendar=hourly`, `OnBootSec=5min`,
+`Persistent=true`).
+
+**A small fix during the session.** The first version of the service
+used `SYSLOG_IDENTIFIER` (uppercase) as a key in `[Service]`. systemd
+rejected it as unknown — the directive is `SyslogIdentifier`
+(camelCase). The consequence was cosmetic but the warning was correctly
+caught and fixed.
+
+### Part 2 — The correlation check
+
+This is the sub-task that closes the finding from the simulated
+incident exercise: **the rate limiter blocks abuse silently, and
+nothing alerts when it fires.**
+
+**The discovery that shaped the design.** The first version of the
+script read only the FastAPI structured log. It detected nothing when
+25 login attempts were sent against the API. The attacker's view was:
+
+    401 401 401 401 429 429 429 ... (21 more 429s)
+
+But when the script ran, it reported zero 429s. The reason: **the 429s
+never reached FastAPI.** The rate limiter acts at the Nginx edge.
+When it fires, the request is refused before the application sees it.
+The FastAPI log correctly showed 4 requests (the ones that passed) and
+the Nginx log correctly showed 21 requests (the ones that did not). No
+single log source was complete.
+
+**This is the central lesson of the session.** Every layer in the
+stack sees a different subset of what happens:
+
+| Source                  | Sees                                    |
+|-------------------------|-----------------------------------------|
+| Nginx access log        | Everything that arrives at the edge     |
+| FastAPI structured log  | Everything that reaches the application |
+| auditd                  | Everything that touches the filesystem  |
+| journalctl              | Service lifecycle events                |
+
+A detection system that reads one source has a blind spot defined by
+what that source does not see.
+
+**The redesigned script reads two sources:**
+
+- **Nginx access log** (COMBINED format) — for 429s.
+- **FastAPI structured log** (JSON) — for 401 bursts from a single IP
+  and for 5xx errors.
+
+The two are correlated by time window, not by request id (this lab does
+not propagate request ids). For the alert classes implemented, that is
+sufficient.
+
+**Alert classes and thresholds:**
+
+| Category    | Source  | Threshold                        |
+|-------------|---------|----------------------------------|
+| `429_BURST` | Nginx   | > 10 rate-limited requests       |
+| `401_BURST` | FastAPI | > 20 failed auths from one IP    |
+| `5XX_BURST` | FastAPI | > 5 server errors                |
+
+**Verification.** After sending 25 login attempts with wrong
+credentials:
+
+    ALERT [429_BURST] 21 requests were rate-limited at the Nginx edge
+        top paths: /api/auth/login (21); top IPs: 192.168.1.173 (21)
+
+**21 of 25 requests were refused at the edge.** The 4 that reached
+FastAPI are the ones below the rate limit, and they appear in the
+FastAPI log as 401s. The full picture requires both logs.
+
+**Where alerts go.** `/var/log/secure-fullstack/alerts.log` (mode 640,
+owner root:root) and stdout (journald, identifier `correlation-check`).
+
+**Automation.** A systemd timer runs the script every 5 minutes
+(`OnUnitActiveSec=5min`, `Persistent=true`). The 5-minute cadence was
+chosen over the hourly cadence used for the GoAccess report because
+this script is a detection control — it should not wait up to an hour
+to notice abuse.
+
+**Known limitation, documented.** The Nginx side of the script counts
+every 429 in the current log file, not only those within the lookback
+window. The Nginx log rotates daily
+(`/etc/logrotate.d/nginx`), so the imprecision is bounded to 24 hours.
+A stricter implementation would parse each line's timestamp and filter
+by time. This is documented in the script itself, in the monitoring
+README, and here.
+
+### Part 3 — What this session completed
+
+| Phase 8 sub-task                    | Status |
+|-------------------------------------|--------|
+| Structured JSON logging             | Done   |
+| auditd with 15 rules                | Done   |
+| GoAccess report + hourly timer      | Done   |
+| Correlation check script            | Done   |
+| Alert when the rate limiter fires   | Done   |
+
+**Phase 8 is complete.** The system now has:
+
+- Structured logs that a machine can filter and aggregate.
+- Kernel-level audit of file and privilege events.
+- A traffic dashboard for the Nginx edge.
+- A correlation script that turns logs into alerts.
+- Automated timers for both the report and the check.
+
+And it has a finding that connects back to the earlier incident
+exercise: the detection gap identified in Session 15 is now closed,
+with evidence in the form of the `429_BURST` alert produced by a real
+attack simulation.
+
+### Concepts learned
+
+- **Every log sees a layer.** The correlation finding is not specific
+  to this project — it is the reason SIEMs exist. A single log source
+  always has a defined blind spot, and the blind spot is a function of
+  where the source sits in the architecture.
+- **Verify the artefact, not the progress output.** GoAccess printed
+  `{0}` while producing a 720 KB report. Reading progress bars and
+  counters is less reliable than reading the files they should have
+  produced.
+- **The control can determine the architecture.** The CSP was written
+  in Phase 2. In Phase 8 it blocked a report. The decision was not to
+  weaken the CSP, but to move the report. This is the reverse of the
+  common pattern ("the architecture forced us to relax the control").
+- **Failing safe is different from failing loudly.** Both scripts
+  detect the trivial error case (empty log) and exit cleanly, rather
+  than producing misleading output. The habit comes from the same
+  principle as `lab_boundary` in the Hermes project.
+- **A finding closed with evidence is worth more than a finding
+  closed by assertion.** The simulated incident exercise (Session 15)
+  said "detection is not automatic". Session 21 closes that with a
+  real alert produced by a real attack simulation.
+- **Automation makes the difference between a demonstration and a
+  control.** Running the correlation script by hand proves it works.
+  Running it every five minutes as a systemd timer makes it a control
+  that operates without the operator remembering to invoke it.
+
+### Files changed
+
+- `deploy/monitoring/generate-goaccess-report.sh` — created
+- `deploy/monitoring/goaccess-report.service` — created
+- `deploy/monitoring/goaccess-report.timer` — created
+- `deploy/monitoring/correlation-check.sh` — created
+- `deploy/monitoring/correlation-check.service` — created
+- `deploy/monitoring/correlation-check.timer` — created
+- `deploy/monitoring/README.md` — created and expanded
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `7903107` | feat(monitoring): add GoAccess report generator with hourly timer |
+| `aeab272` | feat(monitoring): add correlation check script                 |
+| `f74ba6e` | feat(monitoring): add correlation check timer and update README |
+
+### Next step — Phase 9
+
+Phase 9 is **configuration as code**, with three sub-tasks:
+
+1. **Ansible playbooks** that reproduce the current server state:
+   SSH hardening, UFW rules, Fail2Ban, auditd, the systemd units for
+   the application and the monitoring scripts.
+2. **Lynis** — a hardening audit tool that produces a score against a
+   known baseline (CIS). Run before the playbook, run after, compare.
+3. **Privilege separation.** This is the largest item and the one that
+   closes risk **R-02**. The application currently runs as the operator
+   account (`filipe`). The plan:
+
+   - Create a dedicated system user `secure-app` with no login shell
+     and no `sudo`.
+   - Migrate `lab.db` ownership to that user.
+   - Update the systemd unit to run the FastAPI service as `secure-app`.
+   - Adjust Nginx static file permissions so the served directory is
+     readable by `www-data` without depending on `/home/filipe/` being
+     traversable by other users.
+   - Revoke the `chmod o+x /home/filipe` permission that was needed
+     when Nginx first served from the operator's home directory.
+
+   This last step closes two findings at once: R-02 (app runs as the
+   operator) and the residual sub-issue noted when Nginx first started
+   serving the SPA.
