@@ -1,0 +1,16 @@
+[Unit]
+Description=Generate GoAccess HTML report from Nginx access log
+Documentation=file:///home/filipe/secure-fullstack-lab/deploy/monitoring/README.md
+After=nginx.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/home/filipe/secure-fullstack-lab/deploy/monitoring/generate-goaccess-report.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goaccess-report
+
+[Install]
+WantedBy=multi-user.target

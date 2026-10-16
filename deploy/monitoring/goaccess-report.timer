@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the GoAccess report generator hourly
+Documentation=file:///home/filipe/secure-fullstack-lab/deploy/monitoring/README.md
+
+[Timer]
+OnBootSec=5min
+OnCalendar=hourly
+Persistent=true
+Unit=goaccess-report.service
+
+[Install]
+WantedBy=timers.target
