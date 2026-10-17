@@ -245,12 +245,15 @@ rather than silently pending.
 - [ ] Hardening applied via playbook, score re-measured
 - [ ] Before/after documented
 
-### Phase 10 — Backup and restore
+### Phase 10 — Backup and restore (complete)
 
-- [ ] Automated backup of `lab.db`
-- [ ] Defined RTO and RPO
-- [ ] Restore performed for real, with measured duration
-- [ ] Procedure documented
+- [x] Automated backup of `lab.db` and `.jwt_secret` (daily, systemd timer at 03:00)
+- [x] SHA256 integrity verification on each backup
+- [x] Retention: 7 days
+- [x] **Real restore test performed** (database removed, restored, login verified)
+- [x] **RTO measured: 1.394 seconds**
+- [x] **RPO defined: 24 hours**
+- [x] Documented in `deploy/backup/README.md`
 
 ### Phase 11 — Supply chain (backend container)
 

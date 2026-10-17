@@ -4403,3 +4403,188 @@ Phase 10 is **backup and restore**:
    not a control.
 4. Encrypted backup of the CA key, stored offline.
 
+
+---
+
+## Session 23 — Phase 10: Backup and restore
+
+**Goal:** implement automated backups with a defined RPO, measure the
+RTO with a real restore, and document the whole thing.
+
+The phase exists because "I have backups" is not a control. A backup
+that has never been restored is a hope. The work here is to make the
+backup into something that has been proven to work.
+
+### Part 1 — The backup script
+
+`deploy/backup/backup.sh`, run by a systemd oneshot unit called by an
+hourly timer (see Part 3).
+
+**What it backs up:**
+
+- `/var/lib/secure-fullstack/lab.db` — the SQLite database (users,
+  assets).
+- `/var/lib/secure-fullstack/.jwt_secret` — the signing key for JWTs.
+
+**Why the secret is included.** If the secret is lost, the application
+cannot authenticate anyone: every token issued so far is invalid, and
+every refresh token stored by a client is useless. The database can be
+restored from a backup; the secret cannot. Including it in the backup
+turns "the disk failed" into "we restored and everything works".
+
+**Why the database is copied with `sqlite3 .backup` and not `cp`.**
+The `cp` command reads the file page by page. If a write happens during
+the copy, the backup can be half-before and half-after the transaction
+— a file that SQLite will refuse to open, or that will open with
+corrupted data. The `.backup` command asks the SQLite engine itself to
+produce a consistent snapshot, coordinating with any in-progress writes.
+This is the difference between "I have a copy of the file" and "I have
+a backup that can be restored".
+
+**SHA256 hashes.** Each backup is accompanied by a `.sha256` file
+containing the hash of the backup. Before restoring, the hash can be
+verified to confirm that the file has not been corrupted in storage.
+
+**Retention: 7 days.** The script removes files older than 7 days.
+This is enough to recover from "I deleted something a week ago" without
+accumulating months of backups in a lab that generates little data.
+
+**Runs as `root`.** The database is owned by `secure-app`; the backup
+directory is owned by `secure-app`. The backup runs as `root` on
+purpose: a compromise of the application cannot delete its own
+backups. The backup is a control **outside** the application, not
+inside it.
+
+### Part 2 — RTO, RPO, and a real restore test
+
+**RPO (Recovery Point Objective): 24 hours.**
+The timer runs daily at 03:00. If the database is lost at 02:59, the
+most recent backup is from 03:00 the previous day: almost 24 hours of
+data are lost. For a lab with very little data change, this is
+acceptable. Reducing the interval to hourly (or every five minutes)
+would reduce the RPO proportionally; the trade-off is disk space and
+I/O, both negligible for a 28 KB database.
+
+**RTO (Recovery Time Objective): measured at 1.394 seconds.**
+
+The measurement was taken with `time` around the four recovery
+commands:
+
+    sudo cp /var/backups/secure-fullstack/lab-<ts>.db /var/lib/secure-fullstack/lab.db
+    sudo chown secure-app:secure-app /var/lib/secure-fullstack/lab.db
+    sudo chmod 640 /var/lib/secure-fullstack/lab.db
+    sudo systemctl restart secure-fullstack-api.service
+
+The database is 28 KB, so the copy is instant; the restart dominates.
+This number is meaningful, not aspirational — it was measured on the
+same machine that would perform the recovery.
+
+**The test, step by step:**
+
+1. Record the current state: 4 assets owned by the operator.
+2. **Remove the database.** `mv /var/lib/secure-fullstack/lab.db
+   /var/lib/secure-fullstack/lab.db.broken`. The application keeps
+   running; on restart, SQLAlchemy's `create_all` recreates an empty
+   `users` table. The login endpoint now returns 401 for the
+   previously valid credentials, because the user is gone from the
+   database.
+3. **Restore the database.** Copy from `/var/backups/`, fix ownership
+   and permissions, restart the service.
+4. **Verify.** The login works again. The assets are back.
+
+**A note on an early mistake in the test.** The first attempt used
+`GET /api/hello` as the "is the database needed" endpoint. That
+endpoint does not touch the database — it returns a hardcoded JSON
+message. The test therefore "passed" without the database, proving
+nothing. The fix was to use the **login endpoint**, which reads the
+`users` table. The mistake is recorded here because it is instructive:
+**the test must exercise the thing the backup is supposed to protect**.
+
+
+### Part 3 — Automation
+
+The backup script is called by a systemd oneshot unit, which is
+scheduled by a timer:
+
+- `backup.service` — runs `backup.sh`, as `root`.
+- `backup.timer` — `OnCalendar=*-*-* 03:00:00`, `Persistent=true`.
+
+**`Persistent=true` matters.** If the VM is off at 03:00, the timer
+fires the next time the VM boots. A backup that only runs if the
+machine happens to be on at 03:00 is not a backup; it is a hope. This
+setting makes the schedule survive reboots.
+
+**Verified.** Started manually with `systemctl start backup.service`,
+which produced a second backup pair in `/var/backups/secure-fullstack/`
+(database + secret + hashes). The timer is listed with `NEXT` pointing
+to the following 03:00.
+
+### Concepts learned
+
+- **A backup is not a backup until it has been restored.** The 1.4s RTO
+  is not a number I estimated; it is a number measured while the
+  database was actually missing, with the login endpoint returning 401
+  until the restore completed. This is the difference between a control
+  and a claim.
+- **`.backup` vs `cp`.** SQLite has a dedicated backup command for a
+  reason. A file copy of a database in use is a race condition that
+  usually looks like a backup and occasionally is a corrupt file. The
+  `.backup` command coordinates with the engine.
+- **The test must exercise the thing being protected.** My first test
+  used `/api/hello`, which does not touch the database. The "test
+  passed" and proved nothing. The fix — using the login endpoint —
+  immediately showed the problem (401 because the user was gone). A
+  test that cannot fail is not a test.
+- **RPO is a choice, not an accident.** 24 hours is acceptable because
+  the lab changes little. The same script with `OnCalendar=hourly`
+  would give 1 hour. The number is a decision, documented, not a
+  side effect of "we run it once a day".
+- **Backups live outside the application.** The backup runs as `root`
+  and writes to a directory the application cannot modify. A
+  compromised application cannot delete its own backups. If the
+  application could run the backup, it could also delete the backup.
+- **A backup of the database is not a backup of the secret.** The
+  `.jwt_secret` is not in the database, and losing it does not show up
+  as "the data is missing" — it shows up as "every token is invalid
+  and nobody can log in until a new secret is generated". Both files
+  are in the backup because both are necessary for the application to
+  function.
+
+### Files changed
+
+- `deploy/backup/backup.sh` — created
+- `deploy/backup/backup.service` — created
+- `deploy/backup/backup.timer` — created
+- `deploy/backup/README.md` — created
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| *(pending)* | feat(backup): automated database and secret backup          |
+
+### Phase 10 — complete
+
+- Automated backup of the database and the JWT secret.
+- Verified integrity with SHA256.
+- **Real restore test performed**, not simulated.
+- **RTO measured: 1.394 seconds.**
+- **RPO defined: 24 hours.**
+- Documented in `deploy/backup/README.md` and this JOURNAL.
+
+### Next step — Phase 11
+
+Phase 11 is **supply chain**: containerise the backend and demonstrate
+the supply-chain tooling.
+
+1. **Containerfile** for the FastAPI backend (Podman).
+2. **Run as non-root**, read-only filesystem where possible.
+3. **Trivy** scan of the image — CVEs in the image layers.
+4. **SBOM** with Syft in CycloneDX format.
+5. **Image signing** with cosign.
+
+**Scope note (from Session 11).** This is the backend only. The
+frontend and the Nginx proxy remain deployed as they are. Rebuilding
+the whole deployment to demonstrate the concept would be work without
+new information. The JOURNAL entry from Session 11 records the
+reasoning; it stands.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily backup of the Secure Fullstack Lab database
+Documentation=file:///home/filipe/secure-fullstack-lab/deploy/backup/README.md
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=backup.service
+
+[Install]
+WantedBy=timers.target
