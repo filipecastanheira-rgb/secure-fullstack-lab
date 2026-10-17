@@ -249,6 +249,179 @@
           If the two differ, the gap is documented in docs/JOURNAL.md
           and must be investigated (GDM/PAM ordering).
 
+
+    # =========================================================================
+    # Privilege separation (Phase 9)
+    #
+    # The application runs as a dedicated system user with no shell and
+    # no sudo. It can only read its own code (in /opt/) and its own data
+    # (in /var/lib/). It cannot read the PKI directory, the SSH key, or
+    # anything else in /home/filipe/.
+    #
+    # Note on scope: this playbook assumes the repository has been cloned
+    # to ~/secure-fullstack-lab/ on the target host. Deploying the code
+    # from a remote repository is a separate concern, out of scope for a
+    # hardening playbook.
+    # =========================================================================
+
+    - name: Create the secure-app system user
+      ansible.builtin.user:
+        name: secure-app
+        system: true
+        create_home: false
+        home: /nonexistent
+        shell: /usr/sbin/nologin
+
+    - name: Create the application data directory
+      ansible.builtin.file:
+        path: /var/lib/secure-fullstack
+        state: directory
+        owner: secure-app
+        group: secure-app
+        mode: "0750"
+
+    - name: Create the application runtime directory
+      ansible.builtin.file:
+        path: /opt/secure-fullstack
+        state: directory
+        owner: "{{ operator_user }}"
+        group: secure-app
+        mode: "0750"
+
+    - name: Copy the backend code to /opt
+      ansible.posix.synchronize:
+        src: "{{ operator_home }}/secure-fullstack-lab/backend/"
+        dest: /opt/secure-fullstack/backend/
+        recursive: yes
+        archive: no
+        checksum: yes
+        delete: yes
+        rsync_opts:
+          - "--exclude=.venv"
+          - "--exclude=__pycache__"
+          - "--exclude=.jwt_secret"
+          - "--exclude=*.db"
+          - "--exclude=tests"
+      notify: Reload systemd and restart api
+
+    - name: Chown the backend code to secure-app
+      ansible.builtin.file:
+        path: /opt/secure-fullstack/backend
+        state: directory
+        recurse: true
+        owner: secure-app
+        group: secure-app
+
+    - name: Copy lab.db if it exists in the source and not in the destination
+      ansible.builtin.stat:
+        path: /var/lib/secure-fullstack/lab.db
+      register: lab_db_dest
+
+    - name: Migrate lab.db from the source location
+      ansible.builtin.shell: |
+        mv "{{ operator_home }}/secure-fullstack-lab/backend/lab.db" /var/lib/secure-fullstack/lab.db
+        chown secure-app:secure-app /var/lib/secure-fullstack/lab.db
+        chmod 640 /var/lib/secure-fullstack/lab.db
+      when: not lab_db_dest.stat.exists
+      args:
+        creates: /var/lib/secure-fullstack/lab.db
+
+    - name: Migrate .jwt_secret from the source location
+      ansible.builtin.stat:
+        path: /var/lib/secure-fullstack/.jwt_secret
+      register: jwt_dest
+
+    - name: Copy .jwt_secret to the data directory
+      ansible.builtin.shell: |
+        cp "{{ operator_home }}/secure-fullstack-lab/backend/.jwt_secret" /var/lib/secure-fullstack/.jwt_secret
+        chown secure-app:secure-app /var/lib/secure-fullstack/.jwt_secret
+        chmod 600 /var/lib/secure-fullstack/.jwt_secret
+      when:
+        - not jwt_dest.stat.exists
+        - lookup('ansible.builtin.fileglob', operator_home + '/secure-fullstack-lab/backend/.jwt_secret') | length > 0
+
+    - name: Create the Python venv
+      ansible.builtin.command:
+        cmd: /usr/bin/python3 -m venv /opt/secure-fullstack/venv
+        creates: /opt/secure-fullstack/venv/bin/python3
+
+    - name: Install backend dependencies into the venv
+      ansible.builtin.pip:
+        requirements: /opt/secure-fullstack/backend/requirements.txt
+        virtualenv: /opt/secure-fullstack/venv
+
+    - name: Chown the venv to secure-app
+      ansible.builtin.file:
+        path: /opt/secure-fullstack/venv
+        state: directory
+        recurse: true
+        owner: secure-app
+        group: secure-app
+
+    - name: Write the systemd unit for the API
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/secure-fullstack-api.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Secure Fullstack Lab — FastAPI backend
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=secure-app
+          Group=secure-app
+          WorkingDirectory=/opt/secure-fullstack/backend
+          ExecStart=/opt/secure-fullstack/venv/bin/python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+          Restart=on-failure
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Reload systemd and restart api
+
+    - name: Enable and start the API service
+      ansible.builtin.systemd:
+        name: secure-fullstack-api
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Create the static content directory
+      ansible.builtin.file:
+        path: /var/www/secure-fullstack
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Copy the built frontend to /var/www
+      ansible.posix.synchronize:
+        src: "{{ operator_home }}/secure-fullstack-lab/frontend/dist/"
+        dest: /var/www/secure-fullstack/
+        recursive: yes
+        archive: no
+        checksum: yes
+        delete: yes
+      register: frontend_sync
+
+    - name: Fix ownership of the served static files
+      ansible.builtin.file:
+        path: /var/www/secure-fullstack
+        state: directory
+        recurse: true
+        owner: www-data
+        group: www-data
+      when: frontend_sync is changed
+
+    - name: Revoke traverse permission on the operator home
+      ansible.builtin.file:
+        path: "{{ operator_home }}"
+        state: directory
+        mode: "0750"
+
   # ===========================================================================
   # Handlers — run only when notified by a changed task
   # ===========================================================================
