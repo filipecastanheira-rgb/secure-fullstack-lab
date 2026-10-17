@@ -74,7 +74,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # It is generated on first run and stored in `backend/.jwt_secret`, which
 # is gitignored. In a production deployment, this would come from an
 # environment variable injected by the deployment system.
-_JWT_SECRET_FILE = Path(__file__).parent.parent / ".jwt_secret"
+_JWT_SECRET_FILE = Path("/var/lib/secure-fullstack/.jwt_secret")
 _JWT_ALGORITHM = "HS256"
 _ACCESS_TOKEN_EXPIRES_MINUTES = 15
 _REFRESH_TOKEN_EXPIRES_DAYS = 7

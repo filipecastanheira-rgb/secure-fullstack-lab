@@ -55,7 +55,7 @@ server {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
     # --- Static content ---
-    root /home/filipe/secure-fullstack-lab/frontend/dist;
+    root /var/www/secure-fullstack;
     index index.html;
 
     access_log /var/log/nginx/secure-fullstack.access.log;

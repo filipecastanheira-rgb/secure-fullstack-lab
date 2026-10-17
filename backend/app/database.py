@@ -12,7 +12,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # SQLite file lives inside the backend/ folder as `lab.db`.
 # check_same_thread=False is required by SQLite when accessed from FastAPI's
 # thread pool. It is safe because each request gets its own session.
-DATABASE_URL = "sqlite:///./lab.db"
+DATABASE_URL = "sqlite:////var/lib/secure-fullstack/lab.db"
 
 engine = create_engine(
     DATABASE_URL,

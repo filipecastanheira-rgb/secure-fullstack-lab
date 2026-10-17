@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=filipe
-Group=filipe
-WorkingDirectory=/home/filipe/secure-fullstack-lab/backend
-ExecStart=/home/filipe/secure-fullstack-lab/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+User=secure-app
+Group=secure-app
+WorkingDirectory=/opt/secure-fullstack/backend
+ExecStart=/opt/secure-fullstack/venv/bin/python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 Restart=on-failure
 RestartSec=3
 
