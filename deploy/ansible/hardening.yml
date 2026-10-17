@@ -1,0 +1,276 @@
+---
+# Hardening playbook for the Secure Fullstack Lab.
+#
+# Replicates the manual hardening that was done across Phases 3 to 9,
+# in a form that is idempotent and reproducible. Running it against a
+# fresh Ubuntu VM takes the system to the same state as the current one.
+#
+# Key principles:
+# - Every task is idempotent. Running the playbook twice produces no
+#   change on the second run.
+# - Configuration is written to drop-in files, not to the main config
+#   files. This avoids conflicts with package updates.
+# - Services are validated before being restarted. A syntax error in a
+#   config file fails the task, not the running service.
+# - Handlers restart services only when their config changed.
+
+- name: Harden the Secure Fullstack Lab server
+  hosts: localhost
+  become: true
+  gather_facts: true
+
+  vars:
+    ssh_hardening_file: /etc/ssh/sshd_config.d/99-hardening.conf
+    fail2ban_jail_file: /etc/fail2ban/jail.local
+    fail2ban_filter_file: /etc/fail2ban/filter.d/secure-sshd.conf
+    audit_rules_file: /etc/audit/rules.d/secure-fullstack.rules
+    operator_user: filipe
+    operator_home: /home/filipe
+
+  tasks:
+
+    # =========================================================================
+    # SSH
+    # =========================================================================
+
+    - name: Write the SSH hardening drop-in
+      ansible.builtin.copy:
+        dest: "{{ ssh_hardening_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible. Manual edits will be overwritten.
+          # See deploy/hardening/sshd-hardening.conf for the full
+          # rationale of each directive.
+
+          PasswordAuthentication no
+          PubkeyAuthentication yes
+          KbdInteractiveAuthentication no
+          ChallengeResponseAuthentication no
+          PermitEmptyPasswords no
+          PermitRootLogin no
+          AllowUsers {{ operator_user }}
+          LoginGraceTime 30
+          MaxAuthTries 3
+          ClientAliveInterval 300
+          ClientAliveCountMax 2
+          MaxSessions 2
+          X11Forwarding no
+          AllowTcpForwarding no
+          AllowAgentForwarding no
+          IgnoreRhosts yes
+          HostbasedAuthentication no
+          LogLevel INFO
+      notify: Validate and restart ssh
+
+    # =========================================================================
+    # UFW
+    # =========================================================================
+
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: false
+
+    - name: Set UFW default policy — deny incoming
+      community.general.ufw:
+        policy: deny
+        direction: incoming
+
+    - name: Set UFW default policy — allow outgoing
+      community.general.ufw:
+        policy: allow
+        direction: outgoing
+
+    - name: Allow SSH from the Kali VM only
+      community.general.ufw:
+        rule: allow
+        from_ip: 192.168.1.125
+        to_port: "22"
+        proto: tcp
+        comment: "SSH from Kali"
+
+    - name: Allow HTTP
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+        comment: "HTTP (redirects to HTTPS)"
+
+    - name: Allow HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+        comment: "HTTPS"
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+
+    # =========================================================================
+    # Fail2Ban
+    # =========================================================================
+
+    - name: Install Fail2Ban
+      ansible.builtin.apt:
+        name:
+          - fail2ban
+        state: present
+        update_cache: false
+
+    - name: Write the Fail2Ban jail configuration
+      ansible.builtin.copy:
+        dest: "{{ fail2ban_jail_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible.
+          [DEFAULT]
+          bantime  = 1h
+          findtime = 10m
+          maxretry = 5
+          banaction = ufw
+          banaction_allports = ufw
+          destemail = root@localhost
+          sender    = fail2ban@localhost
+          action    = %(action_)s
+
+          [sshd]
+          enabled  = true
+          port     = 22
+          filter   = secure-sshd
+          logpath  = %(sshd_log)s
+          backend  = systemd
+          journalmatch = _SYSTEMD_UNIT=ssh.service
+      notify: Validate and restart fail2ban
+
+    - name: Write the custom Fail2Ban filter for sshd-session
+      ansible.builtin.copy:
+        dest: "{{ fail2ban_filter_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible.
+          # Custom filter for OpenSSH 9.x+, where the authentication
+          # worker process is named sshd-session.
+          [Definition]
+          failregex = ^.*Failed publickey for (invalid user )?<F-USER>.+?</F-USER> from <HOST> port \d+ ssh2(: .*)?$
+                      ^.*Failed password for (invalid user )?<F-USER>.+?</F-USER> from <HOST> port \d+ ssh2$
+                      ^.*Invalid user <F-USER>.+?</F-USER> from <HOST> port \d+$
+                      ^.*Connection closed by authenticating user <F-USER>.+?</F-USER> <HOST> port \d+ \[preauth\]$
+                      ^.*Connection closed by <HOST> port \d+ \[preauth\]$
+          ignoreregex =
+      notify: Validate and restart fail2ban
+
+    # =========================================================================
+    # auditd
+    # =========================================================================
+
+    - name: Install auditd
+      ansible.builtin.apt:
+        name:
+          - auditd
+          - audispd-plugins
+        state: present
+        update_cache: false
+
+    - name: Write the audit rules
+      ansible.builtin.copy:
+        dest: "{{ audit_rules_file }}"
+        owner: root
+        group: root
+        mode: "0640"
+        content: |
+          # Managed by Ansible.
+          # See deploy/hardening/audit-rules.conf for the full rationale.
+          -w /etc/ssh/sshd_config -p wa -k ssh_config
+          -w /etc/ssh/sshd_config.d/ -p wa -k ssh_config_d
+          -w /etc/nginx/ -p wa -k nginx_config
+          -w /etc/ufw/ -p wa -k ufw_config
+          -w /etc/fail2ban/ -p wa -k fail2ban_config
+          -w /etc/systemd/system/ -p wa -k systemd_units
+          -w /etc/passwd -p wa -k identity
+          -w /etc/shadow -p wa -k identity
+          -w /etc/sudoers -p wa -k sudoers
+          -w /etc/sudoers.d/ -p wa -k sudoers
+          -w /etc/audit/rules.d/ -p wa -k audit_config
+          -w /home/filipe/secure-fullstack-lab/backend/ -p wa -k app_backend
+          -w /home/filipe/pki/ -p rwa -k pki
+          -a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=-1 -k privilege_escalation
+          -w /usr/bin/systemctl -p x -k systemctl_exec
+      notify: Load audit rules
+
+    # =========================================================================
+    # System — umask and unused protocols
+    # =========================================================================
+
+    - name: Disable unused network protocols
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/disable-unused-protocols.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible.
+          install dccp /bin/true
+          install sctp /bin/true
+          install rds /bin/true
+          install tipc /bin/true
+
+    - name: Set umask in /etc/login.defs
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: "^UMASK"
+        line: "UMASK\t\t027"
+        state: present
+
+    # =========================================================================
+    # Verification — the umask gap found in the manual hardening
+    # =========================================================================
+
+    - name: Check the effective umask in a new login shell
+      ansible.builtin.shell: |
+        su - {{ operator_user }} -c 'umask'
+      register: effective_umask
+      changed_when: false
+      failed_when: false
+
+    - name: Report the effective umask
+      ansible.builtin.debug:
+        msg: >
+          Effective umask for {{ operator_user }} in a fresh login:
+          {{ effective_umask.stdout | default('unknown') }}.
+          Declared in /etc/login.defs: 027.
+          If the two differ, the gap is documented in docs/JOURNAL.md
+          and must be investigated (GDM/PAM ordering).
+
+  # ===========================================================================
+  # Handlers — run only when notified by a changed task
+  # ===========================================================================
+
+  handlers:
+
+    # Handlers use `shell` with `&&` rather than `block:`.
+    # The `block:` form inside a handler is not reliably resolved by
+    # Ansible, and the failure is confusing. The shell form is simpler:
+    # if the validation fails, the `&&` stops the restart and the
+    # playbook fails — which is the correct behaviour.
+
+    - name: Validate and restart ssh
+      ansible.builtin.shell: sshd -t && systemctl restart ssh
+      args:
+        executable: /bin/bash
+
+    - name: Validate and restart fail2ban
+      ansible.builtin.shell: fail2ban-client -t && systemctl restart fail2ban
+      args:
+        executable: /bin/bash
+
+    - name: Load audit rules
+      ansible.builtin.command: augenrules --load
+      changed_when: true

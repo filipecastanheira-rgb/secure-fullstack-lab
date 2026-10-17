@@ -1,0 +1,14 @@
+---
+# Inventory for the Secure Fullstack Lab.
+#
+# A single host: the Ubuntu VM itself, managed locally (no SSH). This is
+# the standard pattern for hardening a single machine from within it.
+#
+# The connection is local — no SSH, no host key, no password. Privilege
+# escalation is requested per play with `become: true`.
+
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: /usr/bin/python3
