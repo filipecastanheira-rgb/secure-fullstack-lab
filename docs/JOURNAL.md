@@ -4086,3 +4086,320 @@ Phase 9 is **configuration as code**, with three sub-tasks:
    This last step closes two findings at once: R-02 (app runs as the
    operator) and the residual sub-issue noted when Nginx first started
    serving the SPA.
+
+---
+
+## Session 22 — Phase 9: Lynis, Ansible, and privilege separation
+
+**Goal:** close Phase 9 by adding configuration as code (Ansible) and
+finishing the largest item of the phase: separating the application
+from the operator account.
+
+### Part 1 — Lynis baseline and corrections
+
+Lynis was installed and a first audit was run before making any
+changes. The **baseline score was 71**.
+
+A baseline before hardening is the same discipline as a test before a
+refactor: it establishes what "before" means, so that "after" can be
+compared. Without it, the work is a collection of changes without a
+measurement.
+
+The audit produced **1 warning** and 30 suggestions:
+
+| Category | Count | Nature |
+|----------|-------|--------|
+| Warning | 1 | `KRNL-5830` — reboot pending |
+| Suggestions | 30 | Mixed |
+
+**Only 1 warning** is a good result for an Ubuntu install. A default
+Ubuntu Desktop usually produces 10-15. The hardening from Phases 2-8
+had already done most of the work.
+
+**Corrections applied** (those that are applicable to this context):
+
+| Item | Result |
+|------|--------|
+| CUPS / legacy-printer-app | Disabled. Port 631 no longer listening. |
+| Unused network protocols (dccp, sctp, rds, tipc) | Disabled via `/etc/modprobe.d/` |
+| SSH `MaxSessions 10 → 2` | Applied to the hardening drop-in |
+| SSH `ClientAliveCountMax 3 → 2` | Applied |
+| Orphaned packages | Purged via `apt autoremove` |
+| Reboot pending | Rebooted |
+
+**Corrections deliberately not applied**, with rationale:
+
+| Suggestion | Reason |
+|-----------|--------|
+| GRUB password | No physical console access to the VM |
+| Separate partitions | Requires reinstalling the VM |
+| Disable USB drivers | The VM has virtual USB only |
+| `LogLevel INFO → VERBOSE` | INFO is sufficient for Fail2Ban; VERBOSE floods the journal without adding detection value |
+| Remove printer drivers | Part of the Ubuntu Desktop metapackage |
+
+**A discovery along the way.** Removing the `cups` package caused
+Ubuntu to install `legacy-printer-app` as a replacement, which
+immediately started running. The service was found by checking
+`systemctl list-units` after the removal, not by assuming the removal
+had done what it appeared to do. **This is the pattern: after a change,
+verify the outcome, not the command's success message.**
+
+After the reboot and the applicable corrections, the Lynis score was
+**73** — a +2 improvement.
+
+The small delta is expected. Lynis weights heavily on things that a
+Desktop install cannot achieve (separate partitions, no printer
+drivers, no USB). The same work on an Ubuntu Server would show 80+.
+The context determines the ceiling, not the work.
+
+
+### Part 2 — Ansible
+
+Ansible was installed and a playbook was written to reproduce the
+manual hardening as code.
+
+**Structure:**
+
+    deploy/ansible/
+    ├── ansible.cfg
+    ├── inventory.yml
+    └── hardening.yml
+
+The inventory points to `localhost` with `ansible_connection: local`.
+The playbook runs from within the target host — no SSH, no host keys,
+no passwords. Privilege escalation is requested per play
+(`become: true`), not globally.
+
+**What the playbook covers:**
+
+- SSH hardening drop-in (all the directives from Phase 3, plus the
+  Lynis refinements)
+- UFW (default policies, three rules, enabled)
+- Fail2Ban (jail configuration, custom filter for `sshd-session`)
+- auditd (15 rules, including the privilege escalation rule)
+- Disabled network protocols
+- umask in `/etc/login.defs`
+- Privilege separation (Phase 9's largest item — see Part 3)
+
+**Handlers validate before restarting.** Each handler runs the
+service's own config check (`sshd -t`, `fail2ban-client -t`,
+`augenrules --load`) before restarting. A syntax error written by the
+playbook fails the handler, not the running service. Without this,
+a typo in the SSH config would break access — the break-glass is the
+VMware console, but a break is still a break.
+
+**An early failure worth recording.** The first version of the
+handlers used `block:` to group the validation and the restart. Ansible
+did not resolve them: "The requested handler was not found". The fix
+was to use a single `shell` command with `&&`:
+
+    ansible.builtin.shell: sshd -t && systemctl restart ssh
+
+If the validation fails, `&&` stops the restart. The behaviour is the
+same; the construct is one Ansible actually supports.
+
+**Idempotency verified:**
+
+- Dry-run (`--check --diff`): 5 changed tasks, all file rewrites
+- First real run: `changed=8` (5 files + 3 handlers)
+- Second run: `changed=0`
+
+The `changed=0` is the important number. It means the playbook
+describes a state, and the state is that state. If the VM disappeared,
+the playbook would take a fresh host to the same configuration in
+minutes.
+
+**A refinement after the initial run.** The code-copy tasks used
+`shell` + `rsync` with `changed_when: false`. That is a lie to the
+inventory: the task *can* change the system, but the playbook reports
+it never does. The fix was to replace them with
+`ansible.posix.synchronize` using `checksum: yes`, `archive: no`, and
+`delete: yes`. The result:
+
+- `changed` fires only when file contents differ, not when timestamps
+  differ
+- The handler that restarts the API fires only on real code changes
+- Idempotency is honest, not cosmetic
+
+### Part 3 — Privilege separation
+
+This was the largest item in Phase 9 and the one that closes **R-02**
+(the highest-severity risk in the register: the application ran as the
+operator account, with access to the PKI directory and the SSH key).
+
+**Before:**
+
+    filipe (operator)
+      ├── runs uvicorn
+      ├── owns lab.db
+      ├── has sudo
+      ├── owns ~/pki/ca.key
+      └── receives the Kali SSH key
+
+A single compromise of `filipe` was a compromise of everything.
+
+**After:**
+
+    secure-app (system user)
+      ├── runs uvicorn
+      └── owns lab.db and .jwt_secret
+
+    filipe (operator)
+      ├── has sudo
+      └── owns ~/pki/
+
+    www-data (Nginx)
+      └── serves /var/www/secure-fullstack
+
+The application cannot read `~/pki/`, cannot read the SSH key, and
+cannot escalate. A compromise of the application is contained.
+
+**What changed:**
+
+| Item | Before | After |
+|------|--------|-------|
+| Process user | `filipe` | `secure-app` (no shell, no sudo, no home) |
+| Code | `~/secure-fullstack-lab/backend/` | `/opt/secure-fullstack/backend/` |
+| Venv | `~/.../.venv` | `/opt/secure-fullstack/venv/` |
+| Database | `~/.../backend/lab.db` | `/var/lib/secure-fullstack/lab.db` |
+| JWT secret | `~/.../backend/.jwt_secret` | `/var/lib/secure-fullstack/.jwt_secret` |
+| Frontend | `~/.../frontend/dist/` | `/var/www/secure-fullstack/` |
+| Nginx `root` | `/home/filipe/...` | `/var/www/secure-fullstack` |
+| `/home/filipe` | `drwxr-x--x` (`o+x`) | `drwxr-x---` |
+
+**The migration, step by step, with what each step revealed:**
+
+1. **Created the user.** `useradd --system --no-create-home --shell
+   /usr/sbin/nologin secure-app`. Verified that `sudo` is denied for
+   this user (it is — the user is not in the sudoers group).
+
+2. **Moved the database first, before touching the service.** This
+   creates the destination before the source is removed. The reverse
+   order leaves the application with nothing to open if anything goes
+   wrong.
+
+3. **Moved the code and the venv.** Two surprises:
+   - The venv was created by `pip install` running as `root`, so the
+     files were `root:root` with mode `640` (because the umask 027 from
+     Phase 9 was already in effect). The `secure-app` could not read
+     them. The fix was `chown -R secure-app:secure-app` on the venv.
+   - The `uvicorn` entrypoint script (`bin/uvicorn`) has an internal
+     `from uvicorn.main import main` that fails on this version of the
+     package. The fix was to use `python3 -m uvicorn` instead, which
+     uses the public API.
+
+4. **Moved the `.jwt_secret`.** The `security.py` was patched to point
+   to the new path, and the systemd unit restarted. The app then read
+   the secret and issued tokens successfully.
+
+5. **Moved the frontend.** Copied `dist/` to `/var/www/secure-fullstack/`,
+   changed the Nginx `root`, reloaded. The Vue app loads.
+
+6. **Revoked `chmod o+x /home/filipe`.** Until this point, the `o+x`
+   on the home directory was required for Nginx to serve static files
+   from there. With the files now under `/var/www/`, the permission
+   is no longer needed and represents an unnecessary exposure. Revoking
+   it was the final step, and it was done only after confirming that
+   every service still worked without it.
+
+**Verified after every step:**
+
+- `/api/hello` responds on both `127.0.0.1:8000` and `https://192.168.1.173`
+- Login works (secure-app reads `users` and `.jwt_secret`)
+- Asset creation works (secure-app writes to `lab.db`)
+- The Vue SPA loads from `/var/www/`
+- `/home/filipe` is `drwxr-x---` — no other user can traverse
+
+**R-02 closed.** The application now runs as a dedicated, unprivileged,
+shell-less system user. A compromise of the application no longer
+gives access to the CA key, the SSH key, or `sudo`.
+
+
+### Concepts learned
+
+- **A baseline before hardening is not optional.** Without the 71
+  score, the work would have been "I changed a bunch of things". With
+  it, the work is "I improved from 71 to 73, and here is why the delta
+  is small in this environment". The number does not have to be
+  impressive; it has to be a number.
+- **The context sets the ceiling.** Lynis on an Ubuntu Desktop cannot
+  reach 80 by design. The score reflects the environment as much as
+  the work. An auditor reading "73 on a Desktop" and "73 on a Server"
+  sees two different levels of effort.
+- **Remove is not the same as disable, and neither is the same as
+  done.** Removing `cups` installed `legacy-printer-app`. The removal
+  had succeeded; the service was still running. Verify the outcome,
+  not the command's exit code.
+- **Ansible's idempotency is only worth the truth of its `changed`
+  counter.** `changed_when: false` silences the counter. The task still
+  changes the system; the inventory just stops knowing about it.
+  `synchronize` with `checksum: yes` makes `changed` mean what it
+  says: the file contents differ.
+- **Handlers that can break a service must validate before
+  restarting.** The `sshd -t && systemctl restart ssh` pattern fails
+  safely: a bad config stops the restart. The alternative is a service
+  that restarts into a broken state.
+- **Migration order matters.** Move the destination first, verify,
+  then remove the source. In practice: copy `lab.db` to
+  `/var/lib/secure-fullstack/`, update the path, restart, verify. Only
+  then is the old file safe to delete (in our case we used `mv`, which
+  is atomic — but the principle is the same).
+- **The privilege separation makes the pipeline's assumptions
+  visible.** Every place where a service needed to read a file from
+  `/home/filipe/` was an implicit privilege. The migration surfaced
+  them all: the venv (owned by root), the `.jwt_secret` (owned by
+  filipe), the `dist/` (owned by filipe). None of them were visible
+  until we tried to remove the `o+x` on the home directory and
+  discovered what still depended on it.
+- **`chmod o+x` on a home directory is a smell, not a necessity.**
+  It was a workaround for "the web server needs to read from here".
+  The correct answer is "the web server should not need to read from
+  here". The migration was the difference between the two.
+
+### Files changed
+
+- `deploy/ansible/ansible.cfg` — created
+- `deploy/ansible/inventory.yml` — created
+- `deploy/ansible/hardening.yml` — created, then extended with the
+  privilege separation tasks and the `synchronize` refinements
+- `backend/app/database.py` — `DATABASE_URL` points to
+  `/var/lib/secure-fullstack/lab.db`
+- `backend/app/security.py` — `_JWT_SECRET_FILE` points to
+  `/var/lib/secure-fullstack/.jwt_secret`
+- `deploy/systemd/secure-fullstack-api.service` — `User=secure-app`,
+  `WorkingDirectory` and `ExecStart` under `/opt/`
+- `deploy/nginx/secure-fullstack` — `root /var/www/secure-fullstack`
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| `406cc5d` | feat(ansible): add hardening playbook with idempotent tasks    |
+| `4c82064` | docs(readme): register the incomplete SoA as a gap             |
+| `a00da9e` | feat(security): isolate the application under a dedicated system user |
+| *(pending)* | feat(ansible): add privilege separation and use synchronize |
+
+### Phase 9 — closed
+
+With this session, Phase 9 is complete:
+
+- Ansible playbook reproduces the full server state (SSH, UFW,
+  Fail2Ban, auditd, protocols, umask, privilege separation).
+- Idempotency verified: `changed=0` on the second run.
+- Lynis score measured before and after: 71 → 73.
+- R-02 closed. The application runs as `secure-app`, a user with no
+  shell, no sudo, and no access to the operator's home.
+
+### Next step — Phase 10
+
+Phase 10 is **backup and restore**:
+
+1. Automated backup of `lab.db` (and the `.jwt_secret` — losing either
+   means losing the ability to authenticate).
+2. Defined RTO and RPO. Not "we have backups" but "we can restore in
+   N minutes and lose at most M minutes of data".
+3. **A real restore test.** Delete the database, restore from backup,
+   measure the time. A backup that has never been restored is a hope,
+   not a control.
+4. Encrypted backup of the CA key, stored offline.
+

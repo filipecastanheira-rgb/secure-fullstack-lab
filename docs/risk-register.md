@@ -75,20 +75,6 @@ the risk to an acceptable level, not that it eliminates it.
 
 ## 3. Active risks
 
-### R-02 — No privilege separation (application runs as the human operator)
-
-| Field        | Value |
-|--------------|-------|
-| Source       | Threat model §7.5, Findings #2 and #3 (consolidated) |
-| Description  | The FastAPI process, the `lab.db` file, the CA private key (`~/pki/ca.key`), the human operator's shell, the SSH key from Kali, and `sudo` access all share the same account: `filipe`. There is no isolation between "the application", "the data", and "the operator". |
-| Likelihood   | **3** — the application runs as `filipe`, so any compromise of the application inherits `filipe`'s privileges. The attack surface (unauthenticated API) increases the probability, but a successful exploit of the application is not trivial. |
-| Impact       | **5** — a compromise of `filipe` is a compromise of the host. The attacker inherits: the database, the CA private key, SSH access from Kali, and `sudo`. Everything falls in one step. |
-| Severity     | **High (15)** |
-| Treatment    | **Mitigate** |
-| Control      | (1) Create a dedicated system user `secure-app` with no login shell and no `sudo`. (2) Transfer `lab.db` ownership to this user. (3) Update the systemd unit to run the service as `secure-app`. (4) Adjust Nginx static file permissions accordingly. (5) Move the CA private key out of `~/pki/` — ideally off-host. |
-| Phase        | Phase 9 (configuration as code) — the migration is scriptable and pairs naturally with Ansible. |
-| Residual     | **Low (4)** — compromise of the app process is contained. Compromise of the operator account still affects `sudo` and the PKI, but no longer the application data or the runtime. |
-
 ### R-03 — CA private key stored unencrypted on the running server
 
 | Field        | Value |
@@ -254,10 +240,10 @@ Snapshot of the register as of **2026-10-07**, after R-01 and R-05 closure.
 | Low       | 1      | 0      | 0        |
 | Accepted  | —      | —      | 5        |
 
-**Active risks:** R-02 (High), R-03 (High), R-04 (Low, during
-development), R-06 (Medium), R-07 (Medium).
+**Active risks:** R-03 (High), R-04 (Low, during development),
+R-06 (Medium), R-07 (Medium).
 
-**Closed risks:** R-01, R-05.
+**Closed risks:** R-01, R-02, R-05.
 
 **Accepted risks:** AR-01 to AR-05.
 
@@ -268,25 +254,33 @@ Once every active risk is treated as planned:
 | Severity  | Active | Residual |
 |-----------|--------|----------|
 | Critical  | 0      | 0        |
-| High      | 3      | 0        |
+| High      | 2      | 0        |
 | Medium    | 2      | 0        |
-| Low       | 1      | 5        |
+| Low       | 1      | 4        |
 
 Every active risk has a treatment plan that reduces it to Low. No risk
 is left untreated at High or Medium severity after the roadmap completes.
 
 ### Observations
 
-- **Two risks closed so far.** R-01 (loopback binding) and R-05 (rate
-  limiting). Both followed the same pattern: identified in the threat
-  model, classified in the register, treated, verified with evidence, and
-  moved to §6 with the commit reference.
+- **Three risks closed so far.** R-01 (loopback binding), R-02
+  (privilege separation), and R-05 (rate limiting). All three followed
+  the same pattern: identified in the threat model, classified in the
+  register, treated, verified with evidence, and moved to §6 with the
+  commit reference.
 - **The gap between current and residual is the roadmap.** Each remaining
-  phase (4 finalization, 8, 9, 10, 12) closes one or more risks. The
-  register makes the mapping explicit so progress is measurable.
+  phase (10, 11, 12) closes one or more risks. The register makes the
+  mapping explicit so progress is measurable.
 - **Closure is not deletion.** A closed risk stays in §6 with its full
   history. The entry is a permanent record that the risk existed, was
-  assessed, and was resolved. The identifier (R-01, R-05) is never reused.
+  assessed, and was resolved. The identifier (R-01, R-02, R-05) is never
+  reused.
+- **R-02 was the highest-severity item in the register.** Its closure
+  moved the highest active severity from High (15) to High (15) — but
+  the *count* of high-severity risks dropped from three to two, and the
+  two that remain are different in nature: R-03 is about a single file
+  (the CA key), R-04 is about a single account (GitHub). Neither has
+  the systemic reach that R-02 had.
 - **Accepted risks do not change** with the roadmap. They were accepted
   by design, and their rationale stands (see §4.1). If the context
   changes — for example, if the lab is ever exposed to the Internet —
@@ -441,6 +435,59 @@ The transition from 401 to 429 confirms that:
   because connection exhaustion is addressed at the TCP level by the
   Nginx worker configuration and by UFW. Reconsidered if evidence of
   connection-level abuse appears.
+
+
+### R-02 — No privilege separation (closed)
+
+| Field        | Value |
+|--------------|-------|
+| Original severity | High (15) |
+| Residual     | **Low (3)** — the application runs as a dedicated unprivileged user with no access to the PKI directory, the SSH key, or sudo |
+| Closed on    | 2026-10-17 |
+| Commits      | `a00da9e` (manual migration), Phase 9 Ansible playbook (reproducible) |
+
+**Control implemented.**
+
+The application was moved out of the operator's account and into a
+dedicated system user, `secure-app`, with no shell, no `sudo`, and no
+home directory. The process, the code, the venv, the database, and the
+JWT secret were all relocated:
+
+| Item | Before | After |
+|------|--------|-------|
+| Process user | `filipe` | `secure-app` |
+| Code | `~/secure-fullstack-lab/backend/` | `/opt/secure-fullstack/backend/` |
+| Venv | `~/.../.venv` | `/opt/secure-fullstack/venv/` |
+| Database | `~/.../backend/lab.db` | `/var/lib/secure-fullstack/lab.db` |
+| JWT secret | `~/.../backend/.jwt_secret` | `/var/lib/secure-fullstack/.jwt_secret` |
+| Frontend | `~/.../frontend/dist/` | `/var/www/secure-fullstack/` |
+| Nginx root | `/home/filipe/...` | `/var/www/secure-fullstack` |
+| `/home/filipe` | `drwxr-x--x` (`o+x`) | `drwxr-x---` |
+
+**Why this closes the risk.** Before, a compromise of the application
+was a compromise of `filipe` — and therefore of the CA private key in
+`~/pki/`, the SSH key from Kali, and `sudo`. After, a compromise of the
+application is a compromise of `secure-app`, which can read its own
+code and its own data and nothing else.
+
+**Verified:**
+
+- `/api/hello` responds on both `127.0.0.1:8000` and `https://192.168.1.173`
+- Login works (secure-app reads `users` and `.jwt_secret`)
+- Asset creation works (secure-app writes to `lab.db`)
+- The Vue SPA loads from `/var/www/`
+- `/home/filipe` is `drwxr-x---` — no other user can traverse
+- The Ansible playbook reproduces this state from scratch, with
+  `changed=0` on a second run
+
+**Residual risk.** `secure-app` can still read its own code and its own
+database. An attacker who compromises the application has access to
+the assets inventory and can modify it. This is inherent to any
+application that processes data: the process must be able to reach the
+data. What the separation removes is the **escalation** from "the app"
+to "the host and its credentials".
+
+---
 
 ## 7. Revision history
 
