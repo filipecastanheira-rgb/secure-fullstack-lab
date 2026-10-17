@@ -229,6 +229,14 @@ rather than silently pending.
   token remains valid until it is replaced by the next legitimate
   refresh. A token version counter per user, or a persistent denylist,
   would close this. Noted since Phase 4; not yet scheduled.
+- [ ] **Statement of Applicability is incomplete.** The current SoA
+  (`docs/statement-of-applicability.md`) groups the non-applicable
+  controls by category (37 controls in 6 groups) rather than listing
+  each of the 93 Annex A controls individually with its own
+  justification. This is an acceptable shortcut for a small environment
+  but not the canonical format required by ISO 27001 clause 6.1.3(d).
+  A rewrite is scheduled as a dedicated session before Phase 12, so the
+  document is in the correct state when the repository is made public.
 
 ### Phase 9 — Configuration as code
 
