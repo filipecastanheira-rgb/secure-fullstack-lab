@@ -66,15 +66,15 @@ engineering judgment, not missing capability.
 | Firewall          | UFW                     | ✅ working  |
 | SSH hardening     | OpenSSH (key-only)      | ✅ working  |
 | Intrusion prevent | Fail2Ban                | ✅ working  |
-| Auth              | JWT + RBAC              | ⏳ next     |
-| CI/CD             | GitHub Actions          | ⏳ planned  |
-| SAST              | Bandit                  | ⏳ planned  |
-| SCA               | pip-audit, npm audit    | ⏳ planned  |
-| Secrets scanning  | gitleaks                | ⏳ planned  |
-| DAST              | OWASP ZAP               | ⏳ planned  |
-| Supply chain      | Podman, Trivy, Syft, cosign | ⏳ planned |
-| Config as code    | Ansible                 | ⏳ planned  |
-| Benchmark         | Lynis (CIS)             | ⏳ planned  |
+| Auth              | JWT + RBAC              | ✅ working  |
+| CI/CD             | GitHub Actions          | ✅ working  |
+| SAST              | Bandit                  | ✅ working  |
+| SCA               | pip-audit               | ✅ working  |
+| Secrets scanning  | gitleaks                | ✅ working  |
+| DAST              | OWASP ZAP               | ✅ working  |
+| Supply chain      | Podman, Trivy, Syft, cosign | 🟡 in progress |
+| Config as code    | Ansible                 | ✅ working  |
+| Benchmark         | Lynis (CIS)             | ✅ working  |
 
 ## Architecture (current state)
 
@@ -118,6 +118,20 @@ in exactly two places:
 - [`frontend/src/config.js`](frontend/src/config.js) — API base URL
 - [`backend/app/main.py`](backend/app/main.py) — no longer needed after
   Nginx unified the origin
+
+## Container & Supply Chain
+
+The FastAPI backend also runs as a **Podman rootless** container, alongside
+the systemd deployment, to demonstrate supply-chain practices without
+disturbing the proven setup. The container is evidence that the backend
+can be shipped as a scannable artefact — it is not the production path.
+
+- **Image:** `localhost/secure-fullstack-api:0.3`
+- **Containerfile:** [`deploy/container/Containerfile`](deploy/container/Containerfile)
+- **Instructions:** [`deploy/container/README.md`](deploy/container/README.md)
+- **Scan:** `trivy image --image-src podman localhost/secure-fullstack-api:0.3`
+  (0 Python CVEs; 166 OS CVEs inherited from base, tracked as upstream)
+- **SBOM (Syft) and signing (cosign):** pending — Phase 11
 
 ## Documentation
 
@@ -238,12 +252,12 @@ rather than silently pending.
   A rewrite is scheduled as a dedicated session before Phase 12, so the
   document is in the correct state when the repository is made public.
 
-### Phase 9 — Configuration as code
+### Phase 9 — Configuration as code (complete)
 
-- [ ] Ansible playbooks for SSH, UFW, Fail2Ban, auditd
-- [ ] Lynis baseline run and score recorded
-- [ ] Hardening applied via playbook, score re-measured
-- [ ] Before/after documented
+- [x] Ansible playbooks for SSH, UFW, Fail2Ban, auditd
+- [x] Lynis baseline run and score recorded (71 → 73)
+- [x] Hardening applied via playbook, score re-measured
+- [x] Before/after documented
 
 ### Phase 10 — Backup and restore (complete)
 
@@ -255,11 +269,13 @@ rather than silently pending.
 - [x] **RPO defined: 24 hours**
 - [x] Documented in `deploy/backup/README.md`
 
-### Phase 11 — Supply chain (backend container)
+### Phase 11 — Supply chain (backend container) — in progress
 
-- [ ] Containerfile for the FastAPI backend
-- [ ] Podman running non-root, read-only filesystem
-- [ ] Trivy scan of the image
+- [x] Containerfile for the FastAPI backend (base `python:3.14-slim`)
+- [x] Podman running non-root (`appuser`, UID 10001, rootless)
+- [x] Trivy scan of the image (0 Python CVEs; 166 OS CVEs inherited from base)
+- [ ] **Read-only root filesystem** — deferred; SQLite requires a writable journal directory. Hardening path recorded in `docs/JOURNAL.md` (Session 24)
+- [ ] **Data volume hardening** — currently `chmod 777` as a workaround for Podman rootless UID remap. Correct fix: `podman unshare chown 10001:10001` or `--userns=keep-id`
 - [ ] SBOM with Syft (CycloneDX format)
 - [ ] Image signing with cosign
 
