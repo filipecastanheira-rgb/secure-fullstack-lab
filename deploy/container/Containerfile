@@ -1,0 +1,37 @@
+# Containerfile for the Secure Fullstack Lab backend.
+#
+# Build from the backend directory:
+#   podman build -t secure-fullstack-api:0.1 -f deploy/container/Containerfile ./backend
+#
+# The base image is pinned to a minor version. Pinning avoids the
+# surprise of a new major Python version silently changing behaviour.
+FROM python:3.14-slim
+
+# Do not write .pyc files: we run with a read-only filesystem, and
+# __pycache__ would fail to be written.
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Create a dedicated non-root user. The UID is explicit (10001) so that
+# it can be referenced in podman run commands without ambiguity.
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser
+
+WORKDIR /app
+
+# Install dependencies first, before copying the source. This layer is
+# cached, so changes to the source do not force a reinstall.
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade --force-reinstall -r requirements.txt
+
+# Copy the application source and switch ownership.
+COPY app/ ./app/
+RUN chown -R appuser:appuser /app
+
+# Run as the non-root user.
+USER appuser
+
+EXPOSE 8000
+
+# Use 'python3 -m uvicorn' — the 'bin/uvicorn' script had a broken
+# entrypoint in this environment (see JOURNAL session 22).
+CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

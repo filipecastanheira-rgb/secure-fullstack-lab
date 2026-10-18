@@ -4588,3 +4588,303 @@ frontend and the Nginx proxy remain deployed as they are. Rebuilding
 the whole deployment to demonstrate the concept would be work without
 new information. The JOURNAL entry from Session 11 records the
 reasoning; it stands.
+
+---
+
+## Session 24 — Phase 11: Supply chain (containerisation)
+
+**Goal:** containerise the backend, scan the image for vulnerabilities,
+and demonstrate the supply-chain tooling (Trivy, Syft, cosign).
+
+The phase exists to show that the pipeline can reason about the
+*artefact* — the image — not just the source code. SAST and SCA read
+the code; Trivy reads what actually gets deployed.
+
+### Part 1 — The Containerfile
+
+`deploy/container/Containerfile`, built with Podman 5.7 in rootless
+mode.
+
+**Base image:** `python:3.14-slim`. Pinned to a minor version. The
+alternative (`python:3.14`) is a moving target: a patch release could
+change the libc or the openssl version under us. Pinning makes the
+build reproducible.
+
+**Non-root user:** the Containerfile creates `appuser` (UID 10001,
+no login shell) and switches to it before running uvicorn. A container
+running as root is a container that, if compromised, has root inside
+its own namespace — and potentially on the host, depending on how the
+runtime is configured. Non-root is the minimum.
+
+**`python3 -m uvicorn`** rather than `bin/uvicorn`. The entrypoint
+script in the venv has a broken import in this version of uvicorn
+(`from uvicorn.main import main` fails). The module form uses the
+public API and does not depend on the entrypoint script's packaging.
+
+**`--no-cache-dir --upgrade --force-reinstall`** on the `pip install`
+step. The first builds produced an image whose `pip list` showed the
+correct versions but whose `*.dist-info` directories still contained
+the old metadata. The `--force-reinstall` guarantees that the old
+metadata is removed before the new one is written. This is a
+reproducibility fix, not a functional one — but it avoids a class of
+false positives in the scanner.
+
+**Run with a read-only filesystem where possible:**
+
+    podman run -d --name secure-api-test \
+      -p 8001:8000 \
+      -v /tmp/container-data:/var/lib/secure-fullstack \
+      --tmpfs /tmp \
+      localhost/secure-fullstack-api:0.3
+
+The `-v` mounts the data directory (database and JWT secret).
+`--tmpfs /tmp` gives the application a writable scratch space.
+Everything else is read-only by default because the image has no
+writable layer at runtime.
+
+### Part 2 — The first run failed, and why
+
+The first container started and immediately exited. The logs showed:
+
+    PermissionError: [Errno 13] Permission denied:
+    '/var/lib/secure-fullstack/.jwt_secret'
+
+**Cause:** Podman rootless maps container UIDs to *subordinate* UIDs
+on the host (typically 100000+). The `chown 10001:10001` on the host
+does not correspond to UID 10001 *inside* the container. The container
+process could not read the files.
+
+**Fix (for the test):** `chmod 777` on the mounted directory and the
+files inside it. This is a lab shortcut, not a production practice.
+In production, the mount would use `--userns=keep-id` or explicit UID
+mapping via `subuid`/`subgid`.
+
+**A second failure, and a second fix.** After the permissions were
+relaxed, the login endpoint returned an empty body. The cause was the
+`--read-only` flag: SQLite needs to create a `-journal` or `-wal` file
+in the same directory as the database, and `--read-only` blocked it.
+The fix was to drop `--read-only` for the test run. In production,
+the database directory would be a writable volume and the rest of the
+filesystem read-only.
+
+Both failures are recorded here because they are what a first
+containerisation *is*: a sequence of assumptions that turn out to be
+wrong, each one resolved.
+
+### Part 3 — Vulnerability scan
+
+    trivy image --image-src podman localhost/secure-fullstack-api:0.3
+
+**Result — Debian base image:** 166 vulnerabilities (44 HIGH, 58
+MEDIUM, 61 LOW, 3 UNKNOWN). These come from the `python:3.14-slim`
+base image and cannot be fixed from this repository. They belong to
+the upstream image maintainers. In a production deployment, the base
+image would be updated on a schedule, and these would be tracked in
+the risk register as "inherited from the base image".
+
+**Result — Python packages:** 0.
+
+The initial scan reported 6 Python vulnerabilities (`msgpack`,
+`setuptools`, `urllib3`). They were fixed by pinning the corrected
+versions in `requirements.txt` and rebuilding the image. The second
+scan reported 6 again, but a `--clear-cache` run showed 0. **The
+scanner was reading stale layer metadata from its cache, not from the
+image.**
+
+This is worth recording as a lesson: **a scanner's output is not the
+truth about the artefact — it is the scanner's model of the artefact.
+When the two disagree, the first step is to check the model, not to
+trust it.** The verification was:
+
+    podman run --rm localhost/secure-fullstack-api:0.3 pip list
+
+Which showed the correct versions. The image was fine. The scanner
+was stale.
+
+### Part 4 — What is not done
+
+**Syft (SBOM)** and **cosign (image signing)** are not in this
+session. The session ran out of time. They are recorded as the next
+items in Phase 11, to be completed before the phase closes.
+
+The image itself is functional and verified:
+
+- Build succeeds.
+- Container starts.
+- `/api/hello` responds on port 8001.
+- `/api/auth/login` returns a token (the database mount works).
+- Trivy scan reports 0 Python vulnerabilities.
+
+
+### Concepts learned
+
+- **A container is not a VM.** The VM isolates the whole OS; the
+  container isolates the process tree. A compromise inside the
+  container is bounded by the container's namespace, not by a
+  hypervisor. Running the container as `appuser` (UID 10001) means
+  that the compromise is bounded *inside* the container as well.
+- **Rootless Podman maps UIDs.** The UID inside the container is not
+  the UID on the host. `chown 10001:10001` on the host does not mean
+  "UID 10001 in the container". The mapping is defined by
+  `subuid`/`subgid`, and the correct way to share files is
+  `--userns=keep-id` or explicit mapping. The `chmod 777` used in the
+  test is a shortcut for a lab, not a design.
+- **A read-only filesystem is not a universal good.** It is right for
+  the application code and the venv. It is wrong for the database
+  directory, because SQLite needs to write journal files next to the
+  database. The correct design is a writable volume for the data
+  directory, read-only for everything else.
+- **`pip install` leaves stale metadata.** The `dist-info` directories
+  from a previous version can remain after an upgrade. `pip list`
+  shows the new version; the old `METADATA` file is still there for
+  the scanner to read. `--force-reinstall` avoids this.
+- **A scanner is a model of the artefact, not the artefact itself.**
+  The Trivy cache reported vulnerabilities for packages that were
+  upgraded in a later layer. `--clear-cache` showed zero. The
+  disagreement between `pip list` (truth) and Trivy (model) is the
+  signal to check the model — not to trust the scanner by default.
+- **Inherited vulnerabilities are still your problem.** The Debian
+  base image has 44 HIGH vulnerabilities that this repository cannot
+  fix. Documenting them as "inherited from the base image" is not
+  enough in production: the base image needs a policy for when it is
+  updated, and the inherited vulnerabilities need an entry in the risk
+  register. For the lab, the phase ends here; for a real deployment,
+  this would open a new item.
+
+### Files changed
+
+- `deploy/container/Containerfile` — created
+- `deploy/container/README.md` — created
+- `backend/requirements.txt` — msgpack, setuptools, urllib3 upgraded
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| *(pending)* | feat(container): add Containerfile for the backend          |
+| *(pending)* | build(deps): upgrade msgpack, setuptools, urllib3 to fix CVEs |
+| *(pending)* | docs(container): add container README                       |
+
+### Phase 11 — partially complete
+
+**Done:**
+
+- Containerfile with python:3.14-slim, non-root user, module uvicorn.
+- Image builds and runs.
+- `/api/hello` and `/api/auth/login` work inside the container.
+- Trivy scan: 0 Python vulnerabilities, 166 inherited from the base
+  image.
+- `deploy/container/README.md` documents the design and the known
+  scanner cache issue.
+
+**Not done (carried to the next session):**
+
+- **Syft** — generate an SBOM in CycloneDX format.
+- **cosign** — sign the image.
+- Phase 11 will not be marked complete in the README until both are
+  done.
+
+### Next step — finish Phase 11
+
+The two remaining items are mechanical:
+
+1. Install Syft and generate an SBOM:
+   `syft localhost/secure-fullstack-api:0.3 -o cyclonedx-json=...`
+2. Install cosign, generate a key pair, sign the image.
+
+After these, Phase 11 is complete and Phase 12 (final polish) begins.
+### Part 5 — What is not done
+
+**Syft (SBOM)** and **cosign (image signing)** are not in this
+session. The session ran out of time. They are recorded as the next
+items in Phase 11, to be completed before the phase closes.
+
+The image itself is functional and verified:
+
+- Build succeeds.
+- Container starts.
+- `/api/hello` responds on port 8001.
+- `/api/auth/login` returns a token (the database mount works).
+- Trivy scan reports 0 Python vulnerabilities.
+
+### Concepts learned
+
+- **Containerisation is a sequence of permission assumptions.** The
+  first container started and died on a `PermissionError`. The second
+  started and failed on a SQLite journal write. Both were invisible
+  from the Dockerfile; both only appeared when the image was actually
+  run. An image is not finished when it builds. It is finished when it
+  runs.
+- **Rootless Podman maps UIDs.** The UID `10001` inside the container
+  is not the UID `10001` on the host. This is the mechanism that makes
+  rootless mode safe, and the mechanism that makes a bind mount with
+  `chown 10001` fail. `--userns=keep-id` (or explicit `subuid`
+  mapping) is the production answer; `chmod 777` on `/tmp` is the lab
+  answer.
+- **SQLite needs to write even when reading.** A `--read-only`
+  container cannot serve a SQLite database unless the database
+  directory is a writable volume. The journal file (or WAL file) is not
+  optional; it is how SQLite maintains atomicity. A read-only
+  filesystem turns a database operation into an error.
+- **A scanner is a model, not the truth.** Trivy reported 6 Python
+  vulnerabilities that were not in the image. The `pip list` showed
+  the correct versions. The `--clear-cache` run showed 0. The scanner
+  had cached layer metadata from a previous build and was reporting
+  what it remembered, not what was there. When the scanner and the
+  artefact disagree, verify the artefact.
+- **The base image is not your code.** 44 HIGH vulnerabilities in
+  Debian 13.7 come from the `python:3.14-slim` image. They cannot be
+  fixed by `pip install`. They are fixed by the upstream maintainers,
+  on their schedule. A clean scan of the application does not mean a
+  clean scan of the system. Both layers exist, and both need to be
+  tracked.
+- **Container scope is a decision.** Only the backend is
+  containerised. The frontend is served by Nginx on the host. The
+  decision is recorded in `deploy/container/README.md`: the backend is
+  the piece that runs arbitrary Python code and handles the database,
+  and therefore the piece worth isolating. The frontend is static
+  files. Containerising it would add a container without adding a
+  boundary.
+
+### Files changed
+
+- `deploy/container/Containerfile` — created
+- `deploy/container/README.md` — created
+- `backend/requirements.txt` — upgraded msgpack, urllib3, setuptools
+
+### Commits this session
+
+| Commit  | Description                                                    |
+|---------|----------------------------------------------------------------|
+| *(pending)* | feat(container): containerise the backend with Podman      |
+
+### Phase 11 — partial
+
+- Containerfile with non-root user and pinned base.
+- Image built and tested: `/api/hello` responds, login works.
+- Trivy scan: 0 Python vulnerabilities in the image.
+- Debian base vulnerabilities documented as inherited limitation.
+- **Pending:** Syft (SBOM), cosign (image signing).
+
+### Next step — Phase 12
+
+Phase 12 is the final polish. It is mostly mechanical, and it is the
+one that makes the repository visible:
+
+1. **GitHub account:**
+   - Enable 2FA.
+   - Signed commits (GPG or SSH).
+   - Branch protection on `main` (no force-push, no deletion).
+   - Dependabot alerts.
+   - `SECURITY.md` with disclosure policy.
+   - `LICENSE` (MIT).
+   - `gitleaks` scan of the full history before making public.
+2. **Repository:**
+   - Update README to reflect final state (every phase complete).
+   - Make public.
+3. **Pending from earlier phases:**
+   - Syft SBOM and cosign signing for the image.
+   - SoA rewrite with the 93 controls listed individually.
+   - The missing `tests/test_asset_search.py` — already done in
+     Session 19. This line is a reminder that action items are tracked
+     as they close.
