@@ -276,7 +276,7 @@ rather than silently pending.
 - [x] Trivy scan of the image (0 Python CVEs; 166 OS CVEs inherited from base)
 - [ ] **Read-only root filesystem** — deferred; SQLite requires a writable journal directory. Hardening path recorded in `docs/JOURNAL.md` (Session 24)
 - [ ] **Data volume hardening** — currently `chmod 777` as a workaround for Podman rootless UID remap. Correct fix: `podman unshare chown 10001:10001` or `--userns=keep-id`
-- [ ] SBOM with Syft (CycloneDX format)
+- [x] SBOM with Syft (CycloneDX format) — `deploy/container/sbom.cdx.json`
 - [ ] Image signing with cosign
 
 ### Phase 12 — Final polish
