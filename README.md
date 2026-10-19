@@ -227,12 +227,12 @@ can be shipped as a scannable artefact — it is not the production path.
 Items acknowledged as incomplete. Recorded here so they are visible
 rather than silently pending.
 
-- [ ] **Frontend does not authenticate.** The backend requires a JWT on
-  every asset endpoint (Phase 4), but the Vue frontend still calls those
-  endpoints without credentials and receives 401. The UI shows
-  "Could not load assets: HTTP 401". A login form and a request
-  interceptor for the token are needed. Planned as part of a future
-  "Phase 4b" or the final polish phase.
+- [x] **Frontend authentication.** Login form, auth service and logout
+  on 401 are implemented, and the asset table loads after login
+  (Session 25).
+- [ ] **No automatic token refresh in the frontend.** The request
+  interceptor logs the user out on 401 instead of using the refresh
+  token.
 - [ ] **Login endpoint logs user_id: null on success.** The structured
   logging middleware reads `request.state.user_id`, which is only set by
   `get_current_user`. The login endpoint does not use that dependency
@@ -243,14 +243,14 @@ rather than silently pending.
   token remains valid until it is replaced by the next legitimate
   refresh. A token version counter per user, or a persistent denylist,
   would close this. Noted since Phase 4; not yet scheduled.
-- [x] **Statement of Applicability is complete.** Canonical format covering all 93 Annex A controls. See `docs/statement-of-applicability-v2.md`.
-  (`docs/statement-of-applicability.md`) groups the non-applicable
-  controls by category (37 controls in 6 groups) rather than listing
-  each of the 93 Annex A controls individually with its own
-  justification. This is an acceptable shortcut for a small environment
-  but not the canonical format required by ISO 27001 clause 6.1.3(d).
-  A rewrite is scheduled as a dedicated session before Phase 12, so the
-  document is in the correct state when the repository is made public.
+- [x] **Statement of Applicability is complete.** Canonical format
+  covering all 93 Annex A controls. See
+  `docs/statement-of-applicability-v2.md`.
+- [ ] **SoA justifications to review.** An external audit found some
+  "Not Applicable" justifications weak (for example, vulnerability
+  management should be "Applicable").
+- [ ] **`correlation-check.sh` reads the whole Nginx log** instead of
+  only the last 5 minutes.
 
 ### Phase 9 — Configuration as code (complete)
 
@@ -269,7 +269,7 @@ rather than silently pending.
 - [x] **RPO defined: 24 hours**
 - [x] Documented in `deploy/backup/README.md`
 
-### Phase 11 — Supply chain (backend container) — in progress
+### Phase 11 — Supply chain (backend container) — complete, two hardening items deferred
 
 - [x] Containerfile for the FastAPI backend (base `python:3.14-slim`)
 - [x] Podman running non-root (`appuser`, UID 10001, rootless)
@@ -281,11 +281,11 @@ rather than silently pending.
 
 ### Phase 12 — Final polish
 
-- [ ] README updated to reflect final state
-- [ ] `SECURITY.md` with disclosure policy
-- [ ] Dependabot enabled
-- [ ] MIT license
-- [ ] Git history cleaned of anything sensitive
+- [x] README updated to reflect final state
+- [x] `SECURITY.md` with disclosure policy
+- [x] Dependabot enabled
+- [x] MIT license
+- [x] Git history cleaned of anything sensitive
 - [ ] "What I Learned" section completed
 
 ## Running locally
@@ -389,13 +389,12 @@ right trade-off depends on the context.
 
 ## Security
 
-See [`SECURITY.md`](SECURITY.md) (planned) for the disclosure policy.
+See [`SECURITY.md`](SECURITY.md) for the disclosure policy.
 
-The repository is currently **private**. It will be made public once the
-final polish phase is complete. The lab's private IP addresses are
+The repository is **public**. The lab's private IP addresses are
 documented intentionally — they only exist inside an isolated virtual
 network and cannot be reached from the Internet.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE) (to be added in the final polish phase).
+MIT — see [`LICENSE`](LICENSE).
