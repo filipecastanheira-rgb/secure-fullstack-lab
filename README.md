@@ -72,7 +72,7 @@ engineering judgment, not missing capability.
 | SCA               | pip-audit               | ✅ working  |
 | Secrets scanning  | gitleaks                | ✅ working  |
 | DAST              | OWASP ZAP               | ✅ working  |
-| Supply chain      | Podman, Trivy, Syft, cosign | 🟡 in progress |
+| Supply chain      | Podman, Trivy, Syft, cosign | ✅ working  |
 | Config as code    | Ansible                 | ✅ working  |
 | Benchmark         | Lynis (CIS)             | ✅ working  |
 
@@ -131,7 +131,7 @@ can be shipped as a scannable artefact — it is not the production path.
 - **Instructions:** [`deploy/container/README.md`](deploy/container/README.md)
 - **Scan:** `trivy image --image-src podman localhost/secure-fullstack-api:0.3`
   (0 Python CVEs; 166 OS CVEs inherited from base, tracked as upstream)
-- **SBOM (Syft) and signing (cosign):** pending — Phase 11
+- **SBOM (Syft) and signing (cosign):** signed and committed (`sbom.cdx.json.sigstore`)
 
 ## Documentation
 
