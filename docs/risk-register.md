@@ -191,6 +191,20 @@ document exists, with a reference back to this entry.
 | Phase        | Phase 4 (authentication) — the schema changes anyway when ownership is added. |
 | Residual     | **Low (2)** — pagination is enforced. A client can still request large pages, but the server controls the maximum. |
 
+### R-08 — Correlation-check service runs a user-writable script as root
+
+| Field        | Value |
+|--------------|-------|
+| Source       | Review of `deploy/monitoring/correlation-check.service` (Session 25); related to R-02 |
+| Description  | The systemd unit runs `correlation-check.sh` as `root` every 5 minutes, but the script lives in `/home/filipe/secure-fullstack-lab/deploy/monitoring/` and is writable by `filipe`. Anyone who can execute code as `filipe` (for example a malicious npm package during `npm install`) can edit the script and have it run as root within five minutes, without knowing the `sudo` password. This reopens the escalation path that R-02 closed. |
+| Likelihood   | **2** — the attacker must already run code as `filipe`. The lab is not Internet-facing, but a compromised development dependency is a realistic route. |
+| Impact       | **5** — root on the host exposes the CA private key, all credentials and the whole system. |
+| Severity     | **High (10)** |
+| Treatment    | **Mitigate** |
+| Control      | (1) Install the script to `/usr/local/sbin/` owned by `root:root`, mode `0755`, and point `ExecStart` there, so `filipe` can no longer edit what root executes. (2) Optionally run the unit as a dedicated unprivileged user in the `adm` and `systemd-journal` groups, which is enough to read the Nginx log and the journal, and remove root from this path entirely. (3) Record the install step in the Ansible playbooks. |
+| Phase        | Follow-up to Phase 8 (detection and monitoring). |
+| Residual     | **Low (3)** — with a root-owned script, editing it already requires root, so there is no escalation left to gain (likelihood 1, impact 3). |
+
 ---
 
 ## 4. Accepted risks and deferred best practices
@@ -208,6 +222,7 @@ Documenting what was **not done** is as important as documenting what was. A con
 | AR-03 | No OCSP or CRL for issued certificates | Certificates are few, long-lived, and the lab has a short operational lifetime. Revocation infrastructure is not justified. |
 | AR-04 | Verbose Pydantic validation errors returned to clients | The 422 responses describe the schema. In this lab, this aids the developer and does not expose anything not already documented in the OpenAPI schema exposed by FastAPI. |
 | AR-05 | SQLite write serialisation under concurrent load | Acceptable for the lab. PostgreSQL removes the constraint in production; the SQLAlchemy layer makes migration a connection-string change. |
+| AR-06 | No second reviewer on pull requests to `main` ("Require approvals" disabled on 2026-10-19) | Single-maintainer repository: nobody else can approve, and a rule that cannot be satisfied gets bypassed. Pull requests and passing status checks (lint, tests, SAST, SCA, secrets scanning, DAST) remain mandatory, so every change is still gated by CI and leaves a record. See also DP-08. Re-evaluate if a second maintainer joins. |
 
 ### 4.2 Deferred best practices
 
@@ -494,3 +509,4 @@ to "the host and its credentials".
 | Date       | Version | Change |
 |------------|---------|--------|
 | 2026-10-04 | 1.0     | Initial register. Consolidated findings #2 and #3 into R-02. Added R-05 (rate limiting) and R-07 (pagination) from threat model entries that did not generate formal findings. |
+| 2026-10-19 | 1.1     | Added R-08 (correlation-check service runs a user-writable script as root) and AR-06 (no second reviewer on `main`). |
