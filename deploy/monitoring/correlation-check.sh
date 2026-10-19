@@ -63,22 +63,37 @@ emit_alert() {
 
 # --- Source 1: Nginx access log (edge) --------------------------------------
 
-# GoAccess, awk, and friends operate on the file. We use awk to filter by
-# status code and by time window.
-#
-# NOTE: this counts every 429 in the current file, not just the last
-# LOOKBACK. The Nginx log rotates daily (see /etc/logrotate.d/nginx),
-# so the imprecision is bounded to 24 hours. A stricter implementation
-# would parse the timestamp and filter by time; see README for notes.
+# awk filters the access log by time window and by status code. The
+# timestamp ($4, e.g. "[19/Oct/2026:20:02:11") is converted by hand to a
+# sortable YYYYMMDDHHMMSS key and compared with the cutoff, so only the
+# last LOOKBACK is counted. Nginx logs in server local time, which is also
+# what `date` uses here. No awk time functions are needed, so it works
+# with both mawk (the Ubuntu default) and gawk.
 
 if [ -r "${NGINX_LOG}" ]; then
+    # Keep only the lines inside the lookback window.
+    CUTOFF="$(date -d "${LOOKBACK}" +%Y%m%d%H%M%S)"
+    NGINX_RECENT="$(awk -v cutoff="${CUTOFF}" '
+        BEGIN {
+            cutoff = cutoff ""
+            n = split("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", names, " ")
+            for (i = 1; i <= n; i++) mon[names[i]] = sprintf("%02d", i)
+        }
+        {
+            split(substr($4, 2), a, /[\/:]/)
+            if (!(a[2] in mon)) next
+            key = a[3] mon[a[2]] a[1] a[4] a[5] a[6]
+            if (key >= cutoff) print
+        }
+    ' "${NGINX_LOG}")"
+
     # 429s — the rate limiter fired. These requests never reached FastAPI.
-    COUNT_429="$(awk '$9 == 429' "${NGINX_LOG}" | wc -l)"
+    COUNT_429="$(awk '$9 == 429' <<< "${NGINX_RECENT}" | wc -l)"
     if [ "${COUNT_429}" -gt "${THRESHOLD_429}" ]; then
-        TOP_PATHS="$(awk '$9 == 429 {print $7}' "${NGINX_LOG}" \
+        TOP_PATHS="$(awk '$9 == 429 {print $7}' <<< "${NGINX_RECENT}" \
             | sort | uniq -c | sort -rn | head -3 \
             | awk '{print $2" ("$1")"}' | paste -sd, -)"
-        TOP_IPS="$(awk '$9 == 429 {print $1}' "${NGINX_LOG}" \
+        TOP_IPS="$(awk '$9 == 429 {print $1}' <<< "${NGINX_RECENT}" \
             | sort | uniq -c | sort -rn | head -3 \
             | awk '{print $2" ("$1")"}' | paste -sd, -)"
         emit_alert "429_BURST" \

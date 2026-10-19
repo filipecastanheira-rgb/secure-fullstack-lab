@@ -249,8 +249,9 @@ rather than silently pending.
 - [ ] **SoA justifications to review.** An external audit found some
   "Not Applicable" justifications weak (for example, vulnerability
   management should be "Applicable").
-- [ ] **`correlation-check.sh` reads the whole Nginx log** instead of
-  only the last 5 minutes.
+- [x] **`correlation-check.sh` time window.** The Nginx log is now
+  filtered to the last 5 minutes, so an alert stops firing once the
+  burst is over (Session 25).
 
 ### Phase 9 — Configuration as code (complete)
 
