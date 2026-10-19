@@ -243,7 +243,7 @@ rather than silently pending.
   token remains valid until it is replaced by the next legitimate
   refresh. A token version counter per user, or a persistent denylist,
   would close this. Noted since Phase 4; not yet scheduled.
-- [ ] **Statement of Applicability is incomplete.** The current SoA
+- [x] **Statement of Applicability is complete.** Canonical format covering all 93 Annex A controls. See `docs/statement-of-applicability-v2.md`.
   (`docs/statement-of-applicability.md`) groups the non-applicable
   controls by category (37 controls in 6 groups) rather than listing
   each of the 93 Annex A controls individually with its own
