@@ -277,7 +277,7 @@ rather than silently pending.
 - [ ] **Read-only root filesystem** — deferred; SQLite requires a writable journal directory. Hardening path recorded in `docs/JOURNAL.md` (Session 24)
 - [ ] **Data volume hardening** — currently `chmod 777` as a workaround for Podman rootless UID remap. Correct fix: `podman unshare chown 10001:10001` or `--userns=keep-id`
 - [x] SBOM with Syft (CycloneDX format) — `deploy/container/sbom.cdx.json`
-- [ ] Image signing with cosign
+- [x] Image signing with cosign — `deploy/container/sbom.cdx.json.sigstore`
 
 ### Phase 12 — Final polish
 
