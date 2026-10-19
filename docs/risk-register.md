@@ -204,6 +204,7 @@ document exists, with a reference back to this entry.
 | Control      | (1) Install the script to `/usr/local/sbin/` owned by `root:root`, mode `0755`, and point `ExecStart` there, so `filipe` can no longer edit what root executes. (2) Optionally run the unit as a dedicated unprivileged user in the `adm` and `systemd-journal` groups, which is enough to read the Nginx log and the journal, and remove root from this path entirely. (3) Record the install step in the Ansible playbooks. |
 | Phase        | Follow-up to Phase 8 (detection and monitoring). |
 | Residual     | **Low (3)** — with a root-owned script, editing it already requires root, so there is no escalation left to gain (likelihood 1, impact 3). |
+| Status       | **Mitigated (2026-10-19)** — the script is installed at `/usr/local/sbin/correlation-check.sh` (`root:root`, `0755`) and the unit's `ExecStart` points there. After any change to the script in the repository, it must be reinstalled with `sudo install`. |
 
 ---
 
@@ -510,3 +511,4 @@ to "the host and its credentials".
 |------------|---------|--------|
 | 2026-10-04 | 1.0     | Initial register. Consolidated findings #2 and #3 into R-02. Added R-05 (rate limiting) and R-07 (pagination) from threat model entries that did not generate formal findings. |
 | 2026-10-19 | 1.1     | Added R-08 (correlation-check service runs a user-writable script as root) and AR-06 (no second reviewer on `main`). |
+| 2026-10-19 | 1.2     | R-08 mitigated: correlation-check script installed root-owned under `/usr/local/sbin/`. |
