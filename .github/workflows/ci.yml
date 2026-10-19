@@ -50,6 +50,9 @@ jobs:
 
       - name: Run tests
         working-directory: backend
+        env:
+          JWT_SECRET_FILE: ${{ runner.temp }}/jwt_secret
+          DATABASE_URL: sqlite:///${{ runner.temp }}/lab.db
         run: pytest
 
   security:
@@ -146,6 +149,9 @@ jobs:
       # runner, for the duration of the job.
       - name: Start FastAPI in background
         working-directory: backend
+        env:
+          JWT_SECRET_FILE: ${{ runner.temp }}/jwt_secret
+          DATABASE_URL: sqlite:///${{ runner.temp }}/lab.db
         run: |
           nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
 
