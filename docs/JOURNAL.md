@@ -4888,3 +4888,62 @@ one that makes the repository visible:
    - The missing `tests/test_asset_search.py` — already done in
      Session 19. This line is a reminder that action items are tracked
      as they close.
+
+---
+
+## Session 25 — Phase 12: frontend authentication, CI path fix, and Dependabot
+
+### What happened
+
+- **Admin password reset.** The admin password from Phase 4 was lost, so
+  the frontend login could not be tested. The venv is owned by the
+  service user (`secure-app`) since Phase 9, so it was not activated.
+  Instead, the venv interpreter was invoked directly via
+  `sudo -u secure-app`, using the application's own argon2id
+  `PasswordHasher` and `getpass` (the password never appeared in shell
+  history). The `UPDATE` was filtered by email and reported one affected
+  row. A copy of the database was taken first and deleted afterwards.
+  Login was verified with `curl` before testing in the browser.
+- **Frontend authentication (audit finding P1).** Login form, auth
+  service and logout on 401 merged. The asset table loads after login.
+  New dependency: `axios`. Before committing, the installed version
+  (1.20.0) and the lockfile were checked against the March 2026 axios
+  compromise (1.14.1 and 0.30.4, injected `plain-crypto-js`): not
+  affected.
+- **CI broke on the first PR.** `pytest` and the ZAP job failed because
+  `security.py` and `database.py` hardcoded `/var/lib/secure-fullstack/`
+  paths (introduced in Phase 9), which do not exist on GitHub runners.
+  Fix: `JWT_SECRET_FILE` and `DATABASE_URL` are now read from the
+  environment, defaulting to the production values. CI points both at
+  `runner.temp`. Production behaviour is unchanged.
+- **Branch protection.** "Require approvals" was disabled on `main`:
+  with a single maintainer nobody can approve a pull request. Pull
+  requests and passing status checks remain mandatory. Accepted risk:
+  no second reviewer.
+- **Dependabot.** Two alerts closed: `shell-quote` (critical, dev
+  dependency, 1.10.0 to 1.12.0) and `source-map-js` (high, 1.2.1 to
+  1.2.2). Each pull request was rebased with `@dependabot rebase`
+  and merged after CI passed.
+
+### Lessons
+
+- **Paths are configuration.** A path that works on the server and
+  nowhere else is a hidden dependency on the environment. CI found it
+  because it is the first place the code runs on a clean machine.
+- **A re-run does not fix a branch.** Re-running CI repeats the same
+  code. The fix has to reach the branch (merge or rebase) first.
+- **Protect the process, not the ritual.** A rule that cannot be
+  satisfied gets bypassed. Better to relax it deliberately and record
+  the residual risk.
+- **Check a new dependency against current advisories** before it
+  enters the lockfile, not after.
+
+### Open items
+
+- Frontend: automatic token refresh (interceptor only logs out on 401).
+- Refresh tokens have no persistent denylist.
+- `correlation-check.sh` still reads the whole Nginx log.
+- SoA: some "Not Applicable" justifications need review.
+- Container: `--read-only` deferred; `chmod 777` workaround.
+- The deployed backend in `/opt/secure-fullstack/backend` still runs the
+  pre-fix code (identical behaviour); redeploy when convenient.
