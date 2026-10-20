@@ -83,3 +83,25 @@ def test_soa_summary_matches_table():
     assert summary["implemented_partial"] == counts["I"] + counts["P"]
     assert summary["planned"] == counts["Pl"]
     assert summary["planned_ids"] == sorted(i for i, s in rows if s == "Pl")
+
+
+PREFIXES = {
+    "NA": ("Not applicable:",),
+    "Pl": ("Applicable, not implemented:", "Applicable, no resources:"),
+}
+FULL_ROW = re.compile(r"^\|\s*(A\.\d+\.\d+)\s*\|[^|]*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$")
+
+
+def test_soa_na_and_planned_justifications_have_required_prefix():
+    text = SOA_PATH.read_text(encoding="utf-8")
+    table = text.split("## 3.", 1)[1].split("## 4.", 1)[0]
+    wrong = []
+    for line in table.splitlines():
+        m = FULL_ROW.match(line)
+        if not m:
+            continue
+        control, status, justification = m.groups()
+        allowed = PREFIXES.get(status)
+        if allowed and not justification.startswith(allowed):
+            wrong.append(control)
+    assert wrong == [], f"justificacao sem prefixo valido: {wrong}"
