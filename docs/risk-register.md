@@ -206,6 +206,21 @@ document exists, with a reference back to this entry.
 | Residual     | **Low (3)** — with a root-owned script, editing it already requires root, so there is no escalation left to gain (likelihood 1, impact 3). |
 | Status       | **Mitigated (2026-10-19)** — the script is installed at `/usr/local/sbin/correlation-check.sh` (`root:root`, `0755`) and the unit's `ExecStart` points there. After any change to the script in the repository, it must be reinstalled with `sudo install`. |
 
+### R-09 — Backup and GoAccess services run user-writable scripts as root
+
+| Field        | Value |
+|--------------|-------|
+| Source       | External repository audit (2026-10-20); same class as R-08 |
+| Description  | `backup.service` and `goaccess-report.service` ran `backup.sh` and `generate-goaccess-report.sh` as `root` from `/home/filipe/secure-fullstack-lab/deploy/`, a path writable by `filipe`. Anyone able to run code as `filipe` could edit either script and have it executed as root on the next timer run. The backup script also copies the JWT secret and deletes old files (`find -delete`) as root. R-08 was fixed for `correlation-check` only; the other two units were not reviewed at the time. |
+| Likelihood   | **2** — the attacker must already run code as `filipe` (for example a malicious npm package). |
+| Impact       | **5** — root on the host, plus access to the database and JWT secret copied by the backup. |
+| Severity     | **High (10)** |
+| Treatment    | **Mitigate** |
+| Control      | Install both scripts to `/usr/local/sbin/` (`root:root`, `0755`) and point `ExecStart` there. Sweep of every unit in `/etc/systemd/system/` for `/home/filipe` paths: no other unit executes code from the home directory. |
+| Phase        | Follow-up to Phases 8 and 10 (monitoring, backup). |
+| Residual     | **Low (3)** — editing the scripts now requires root. |
+| Status       | **Mitigated (2026-10-20)** — verified on the VM: `backup.service` created a new backup and `goaccess-report.service` regenerated the report, both from `/usr/local/sbin/`. After a change to either script in the repository, it must be reinstalled with `sudo install`. Lesson: when a risk is found in one unit, review all units of the same kind. |
+
 ---
 
 ## 4. Accepted risks and deferred best practices
@@ -512,3 +527,4 @@ to "the host and its credentials".
 | 2026-10-04 | 1.0     | Initial register. Consolidated findings #2 and #3 into R-02. Added R-05 (rate limiting) and R-07 (pagination) from threat model entries that did not generate formal findings. |
 | 2026-10-19 | 1.1     | Added R-08 (correlation-check service runs a user-writable script as root) and AR-06 (no second reviewer on `main`). |
 | 2026-10-19 | 1.2     | R-08 mitigated: correlation-check script installed root-owned under `/usr/local/sbin/`. |
+| 2026-10-20 | 1.3     | Added R-09 (backup and GoAccess services ran user-writable scripts as root), mitigated the same day after an external audit. |
