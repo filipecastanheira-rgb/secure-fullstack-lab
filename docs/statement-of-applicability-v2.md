@@ -61,7 +61,7 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 | **A.6 People controls** | | | |
 | A.6.1 | Screening | NA | Not applicable: no employees. |
 | A.6.2 | Terms and conditions of employment | NA | Not applicable: no employees. |
-| A.6.3 | Information security awareness, education and training | NA | Not applicable: no staff to train. |
+| A.6.3 | Information security awareness, education and training | P | The operator's own certifications and training; no staff to train and no formal awareness programme. |
 | A.6.4 | Disciplinary process | NA | Not applicable: no employees. |
 | A.6.5 | Responsibilities after termination or change of employment | NA | Not applicable: no employees. |
 | A.6.6 | Confidentiality or non-disclosure agreements | NA | Not applicable: no employees. |
@@ -121,9 +121,9 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 ## 4. Summary of Applicability
 
 - **Total controls:** 93
-- **Applicable:** 60
-- **Not Applicable:** 33
-- **Implemented / Partial:** 54
+- **Applicable:** 61
+- **Not Applicable:** 32
+- **Implemented / Partial:** 55
 - **Planned:** 6 (A.5.10, A.5.19, A.5.22, A.5.35, A.8.6, A.8.14)
 
-The Not Applicable controls (33) result from the lab being a single-operator environment without employees, and from the physical host and network being outside the declared scope (section 1). Each exclusion is justified in the table above, as required by ISO/IEC 27001:2022 clause 6.1.3(d).
+The Not Applicable controls (32) result from the lab being a single-operator environment without employees, and from the physical host and network being outside the declared scope (section 1). Each exclusion is justified in the table above, as required by ISO/IEC 27001:2022 clause 6.1.3(d).
