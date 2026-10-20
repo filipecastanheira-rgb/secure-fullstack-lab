@@ -86,7 +86,7 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 | A.8.1 | User endpoint devices | NA | Not applicable: no managed endpoint devices in scope. |
 | A.8.2 | Privileged access rights | I | `sudo` restricted; app runs as `secure-app` without shell/sudo. |
 | A.8.3 | Information access restriction | I | RBAC + JWT authentication. |
-| A.8.4 | Access to source code | I | GitHub repository (private). |
+| A.8.4 | Access to source code | I | GitHub repository (public); `main` is protected: pull request and status checks required, review approvals disabled (AR-06). |
 | A.8.5 | Secure authentication | I | Argon2id hashing; JWT with type separation. |
 | A.8.6 | Capacity management | Pl | Applicable, not implemented: no capacity monitoring or alerting. |
 | A.8.7 | Protection against malware | P | Container isolation; no host AV (VM only). |
