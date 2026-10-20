@@ -78,7 +78,6 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 | A.7.12 | Cabling security | NA | VMware virtual environment. |
 | A.7.13 | Equipment maintenance | NA | VMware virtual environment. |
 | A.7.14 | Secure disposal or re-use of equipment | NA | VMware virtual environment. |
-| A.7.15 | Clear desk and clear screen policy | NA | VMware virtual environment. |
 | **A.8 Technological controls** | | | |
 | A.8.1 | User endpoint devices | NA | No managed endpoint devices. |
 | A.8.2 | Privileged access rights | I | `sudo` restricted; app runs as `secure-app` without shell/sudo. |
@@ -118,9 +117,9 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 ## 4. Summary of Applicability
 
 - **Total controls:** 93
-- **Applicable:** 53
-- **Not Applicable:** 40
-- **Implemented / Partial:** 53
-- **Planned:** 4 (A.5.1, A.5.10, A.5.30, A.8.12)
+- **Applicable:** 47
+- **Not Applicable:** 46
+- **Implemented / Partial:** 45
+- **Planned:** 2 (A.5.1, A.5.10)
 
-The high number of Not Applicable controls (40) is a direct result of the lab being a single-operator environment without employees, physical premises, or external suppliers. All exclusions are justified in the table above, in line with ISO/IEC 27001:2013 clause 6.1.3(d) requirements.
+The high number of Not Applicable controls (46) is a direct result of the lab being a single-operator environment without employees, physical premises, or external suppliers. All exclusions are justified in the table above, in line with ISO/IEC 27001:2022 clause 6.1.3(d) requirements.
