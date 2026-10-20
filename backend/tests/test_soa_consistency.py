@@ -49,15 +49,22 @@ def _summary():
         "na": grab("Not Applicable"),
         "implemented_partial": grab("Implemented / Partial"),
         "planned": grab("Planned"),
-        "planned_ids": sorted(i.strip() for i in planned_ids.group(1).split(",")) if planned_ids else [],
+        "planned_ids": (
+            sorted(i.strip() for i in planned_ids.group(1).split(","))
+            if planned_ids
+            else []
+        ),
     }
 
 
 def test_soa_has_exactly_the_93_annex_a_controls():
     ids = [i for i, _ in _rows()]
-    assert len(ids) == len(set(ids)), f"duplicados: {[i for i, c in Counter(ids).items() if c > 1]}"
-    assert set(EXPECTED_IDS) - set(ids) == set(), f"ausentes: {sorted(set(EXPECTED_IDS) - set(ids))}"
-    assert set(ids) - set(EXPECTED_IDS) == set(), f"desconhecidos: {sorted(set(ids) - set(EXPECTED_IDS))}"
+    duplicates = [i for i, c in Counter(ids).items() if c > 1]
+    missing = sorted(set(EXPECTED_IDS) - set(ids))
+    unknown = sorted(set(ids) - set(EXPECTED_IDS))
+    assert duplicates == [], f"duplicados: {duplicates}"
+    assert missing == [], f"ausentes: {missing}"
+    assert unknown == [], f"desconhecidos: {unknown}"
     assert len(ids) == 93
 
 
