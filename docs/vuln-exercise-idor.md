@@ -81,7 +81,7 @@ the demonstration that happens here.
         http://127.0.0.1:8000/api/assets/1
     {
       "hostname": "ubuntu-lab",
-      "ip_address": "192.168.1.173",
+      "ip_address": "<UBUNTU_IP>",
       "os": "Ubuntu 24.04",
       "id": 1,
       "owner_id": 1,
@@ -109,7 +109,7 @@ Both succeed. The endpoints work as intended for the "correct" cases.
         http://127.0.0.1:8000/api/assets/1
     {
       "hostname": "ubuntu-lab",
-      "ip_address": "192.168.1.173",
+      "ip_address": "<UBUNTU_IP>",
       "os": "Ubuntu 24.04",
       "id": 1,
       "owner_id": 1,

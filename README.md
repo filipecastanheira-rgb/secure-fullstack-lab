@@ -106,8 +106,8 @@ engineering judgment, not missing capability.
 
 The lab runs on **isolated virtual networks inside VMware**:
 
-- **Ubuntu VM** at `192.168.1.173` — hosts the application, Nginx, database.
-- **Kali VM** at `192.168.1.125` — client, browser, security testing.
+- **Ubuntu VM** at `<UBUNTU_IP>` — hosts the application, Nginx, database.
+- **Kali VM** at `<KALI_IP>` — client, browser, security testing. Addresses in this repository are placeholders; the real ones are intentionally not published.
 - Traffic between VMs stays on dedicated lab segments behind a virtual
   firewall/router. The lab is **not exposed to the Internet** and is **not
   a 24/7 service** — it runs when working on it.
@@ -314,7 +314,7 @@ rather than silently pending.
 
 Then open:
 
-    https://192.168.1.173
+    https://<UBUNTU_IP>
 
 The certificate is issued by an internal CA. The CA must be installed on
 clients (see `deploy/hardening/README.md`).

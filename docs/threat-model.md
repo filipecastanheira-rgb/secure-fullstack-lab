@@ -380,7 +380,7 @@ Administrative boundary. Controls at this boundary:
 - Key-only authentication (no passwords)                  `[implemented]`
 - `PermitRootLogin no`                                    `[implemented]`
 - `AllowUsers filipe`                                     `[implemented]`
-- UFW: SSH allowed only from `192.168.1.125` (Kali)       `[implemented]`
+- UFW: SSH allowed only from `<KALI_IP>` (Kali)       `[implemented]`
 - Fail2Ban: bans after repeated failures                  `[implemented]`
 
 **B5 — Physical host → VM console.**
@@ -1028,7 +1028,7 @@ connections open.
 *Status:* `[implemented]`
 
 **D3. UFW limits reachability to one source IP.**
-Only `192.168.1.125` (the Kali VM) can reach port 22. This is a strong
+Only `<KALI_IP>` (the Kali VM) can reach port 22. This is a strong
 constraint — but note that UFW filters *by source IP*, and IP spoofing is
 technically possible in limited scenarios.
 *Status:* `[implemented]` — note that this and D1 are **independent**
@@ -1171,7 +1171,7 @@ certificate issued by that CA is rejected.
 An attacker with the CA private key can issue a valid certificate for
 **any** identity. They can impersonate the application, the host, or any
 other service that trusts this CA.
-*Scenario:* attacker issues a certificate for `192.168.1.173` with a
+*Scenario:* attacker issues a certificate for `<UBUNTU_IP>` with a
 stolen private key, redirects traffic, and the client trusts the
 certificate silently.
 *Status:* `[gap]` — the only mitigations are: keep the key safe, encrypt

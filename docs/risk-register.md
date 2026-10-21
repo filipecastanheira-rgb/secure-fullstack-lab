@@ -173,7 +173,7 @@ document exists, with a reference back to this entry.
 | Impact       | **3** — loss of non-repudiation. An authenticated operator can deny an action and there is no recording to contradict them. Indirect impact on incident response and forensics. |
 | Severity     | **Medium (6)** |
 | Treatment    | **Mitigate** |
-| Control      | (1) Install and configure `auditd` with watches on `/etc/`, `/home/filipe/secure-fullstack-lab/backend/`, and `~/pki/`. (2) Optionally, `tlog` for `sudo` session recording. (3) Ship audit logs off-host so a compromised host cannot erase its own evidence. |
+| Control      | (1) Install and configure `auditd` with watches on `/etc/`, `/home/<user>/secure-fullstack-lab/backend/`, and `~/pki/`. (2) Optionally, `tlog` for `sudo` session recording. (3) Ship audit logs off-host so a compromised host cannot erase its own evidence. |
 | Phase        | Phase 8 (detection and monitoring). |
 | Residual     | **Low (3)** — commands executed as `filipe` are recorded, changes to sensitive paths are logged. Sessions running as a future `secure-app` user still escape this (see R-02). |
 
@@ -196,7 +196,7 @@ document exists, with a reference back to this entry.
 | Field        | Value |
 |--------------|-------|
 | Source       | Review of `deploy/monitoring/correlation-check.service` (Session 25); related to R-02 |
-| Description  | The systemd unit runs `correlation-check.sh` as `root` every 5 minutes, but the script lives in `/home/filipe/secure-fullstack-lab/deploy/monitoring/` and is writable by `filipe`. Anyone who can execute code as `filipe` (for example a malicious npm package during `npm install`) can edit the script and have it run as root within five minutes, without knowing the `sudo` password. This reopens the escalation path that R-02 closed. |
+| Description  | The systemd unit runs `correlation-check.sh` as `root` every 5 minutes, but the script lives in `/home/<user>/secure-fullstack-lab/deploy/monitoring/` and is writable by `filipe`. Anyone who can execute code as `filipe` (for example a malicious npm package during `npm install`) can edit the script and have it run as root within five minutes, without knowing the `sudo` password. This reopens the escalation path that R-02 closed. |
 | Likelihood   | **2** — the attacker must already run code as `filipe`. The lab is not Internet-facing, but a compromised development dependency is a realistic route. |
 | Impact       | **5** — root on the host exposes the CA private key, all credentials and the whole system. |
 | Severity     | **High (10)** |
@@ -211,12 +211,12 @@ document exists, with a reference back to this entry.
 | Field        | Value |
 |--------------|-------|
 | Source       | External repository audit (2026-10-20); same class as R-08 |
-| Description  | `backup.service` and `goaccess-report.service` ran `backup.sh` and `generate-goaccess-report.sh` as `root` from `/home/filipe/secure-fullstack-lab/deploy/`, a path writable by `filipe`. Anyone able to run code as `filipe` could edit either script and have it executed as root on the next timer run. The backup script also copies the JWT secret and deletes old files (`find -delete`) as root. R-08 was fixed for `correlation-check` only; the other two units were not reviewed at the time. |
+| Description  | `backup.service` and `goaccess-report.service` ran `backup.sh` and `generate-goaccess-report.sh` as `root` from `/home/<user>/secure-fullstack-lab/deploy/`, a path writable by `filipe`. Anyone able to run code as `filipe` could edit either script and have it executed as root on the next timer run. The backup script also copies the JWT secret and deletes old files (`find -delete`) as root. R-08 was fixed for `correlation-check` only; the other two units were not reviewed at the time. |
 | Likelihood   | **2** — the attacker must already run code as `filipe` (for example a malicious npm package). |
 | Impact       | **5** — root on the host, plus access to the database and JWT secret copied by the backup. |
 | Severity     | **High (10)** |
 | Treatment    | **Mitigate** |
-| Control      | Install both scripts to `/usr/local/sbin/` (`root:root`, `0755`) and point `ExecStart` there. Sweep of every unit in `/etc/systemd/system/` for `/home/filipe` paths: no other unit executes code from the home directory. |
+| Control      | Install both scripts to `/usr/local/sbin/` (`root:root`, `0755`) and point `ExecStart` there. Sweep of every unit in `/etc/systemd/system/` for `/home/<user>` paths: no other unit executes code from the home directory. |
 | Phase        | Follow-up to Phases 8 and 10 (monitoring, backup). |
 | Residual     | **Low (3)** — editing the scripts now requires root. |
 | Status       | **Mitigated (2026-10-20)** — verified on the VM: `backup.service` created a new backup and `goaccess-report.service` regenerated the report, both from `/usr/local/sbin/`. After a change to either script in the repository, it must be reinstalled with `sudo install`. Lesson: when a risk is found in one unit, review all units of the same kind. |
@@ -356,11 +356,11 @@ network interface. The defence no longer depends on a single layer.
 
    Previously: `0.0.0.0:8000`.
 
-2. `https://192.168.1.173` in the Kali browser continues to work — the
+2. `https://<UBUNTU_IP>` in the Kali browser continues to work — the
    full application (Vue frontend, API proxy to FastAPI) loads and the
    assets table is populated. The Nginx → FastAPI path is unaffected.
 
-3. From the Kali VM, `nc -zv -w 3 192.168.1.173 8000` returns
+3. From the Kali VM, `nc -zv -w 3 <UBUNTU_IP> 8000` returns
    `Connection timed out`. This was already true before the change (UFW
    blocked it), and remains true now that nothing is listening on the
    network interface at all.
@@ -424,7 +424,7 @@ client:
 
     for i in $(seq 1 10); do
       curl -s -o /dev/null -w "%{http_code}" \
-        -X POST https://192.168.1.173/api/auth/login \
+        -X POST https://<UBUNTU_IP>/api/auth/login \
         -H "Content-Type: application/json" \
         -d '{"email":"teste@example.com","password":"..."}'
     done
@@ -492,8 +492,8 @@ JWT secret were all relocated:
 | Database | `~/.../backend/lab.db` | `/var/lib/secure-fullstack/lab.db` |
 | JWT secret | `~/.../backend/.jwt_secret` | `/var/lib/secure-fullstack/.jwt_secret` |
 | Frontend | `~/.../frontend/dist/` | `/var/www/secure-fullstack/` |
-| Nginx root | `/home/filipe/...` | `/var/www/secure-fullstack` |
-| `/home/filipe` | `drwxr-x--x` (`o+x`) | `drwxr-x---` |
+| Nginx root | `/home/<user>/...` | `/var/www/secure-fullstack` |
+| `/home/<user>` | `drwxr-x--x` (`o+x`) | `drwxr-x---` |
 
 **Why this closes the risk.** Before, a compromise of the application
 was a compromise of `filipe` — and therefore of the CA private key in
@@ -503,11 +503,11 @@ code and its own data and nothing else.
 
 **Verified:**
 
-- `/api/hello` responds on both `127.0.0.1:8000` and `https://192.168.1.173`
+- `/api/hello` responds on both `127.0.0.1:8000` and `https://<UBUNTU_IP>`
 - Login works (secure-app reads `users` and `.jwt_secret`)
 - Asset creation works (secure-app writes to `lab.db`)
 - The Vue SPA loads from `/var/www/`
-- `/home/filipe` is `drwxr-x---` — no other user can traverse
+- `/home/<user>` is `drwxr-x---` — no other user can traverse
 - The Ansible playbook reproduces this state from scratch, with
   `changed=0` on a second run
 

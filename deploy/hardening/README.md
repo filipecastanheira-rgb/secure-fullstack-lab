@@ -58,8 +58,8 @@ the safety net throughout.
 
 The connecting client (Kali) generates a keypair and copies the public key:
 
-    ssh-keygen -t ed25519 -C "kali-lab@192.168.1.125"
-    ssh-copy-id filipe@192.168.1.173
+    ssh-keygen -t ed25519 -C "kali-lab@<KALI_IP>"
+    ssh-copy-id filipe@<UBUNTU_IP>
 
 Test that key auth works **before** disabling passwords. The order matters —
 if you disable passwords first and the key is wrong, you lock yourself out.
@@ -68,13 +68,13 @@ if you disable passwords first and the key is wrong, you lock yourself out.
 
 UFW defaults: `deny incoming`, `allow outgoing`. Only three rules:
 
-    sudo ufw allow from 192.168.1.125 to any port 22 proto tcp comment 'SSH from Kali'
+    sudo ufw allow from <KALI_IP> to any port 22 proto tcp comment 'SSH from Kali'
     sudo ufw allow 80/tcp  comment 'HTTP (redirects to HTTPS)'
     sudo ufw allow 443/tcp comment 'HTTPS'
 
 Notes:
 
-- SSH is restricted to one source IP (`192.168.1.125` = the Kali VM).
+- SSH is restricted to one source IP (`<KALI_IP>` = the Kali VM).
 - HTTP/HTTPS are open to the lab network (any source), because the browser
   may come from any address on the lab segment.
 - **Order matters:** define the SSH rule BEFORE running `ufw enable`, or you
@@ -126,18 +126,18 @@ session worker.
 **To check status and unban an IP:**
 
     sudo fail2ban-client status sshd
-    sudo fail2ban-client set sshd unbanip 192.168.1.125
+    sudo fail2ban-client set sshd unbanip <KALI_IP>
 
 ## Network assumption
 
 This lab assumes:
 
-- **Ubuntu VM** at `192.168.1.173`
-- **Kali VM** at `192.168.1.125`
+- **Ubuntu VM** at `<UBUNTU_IP>`
+- **Kali VM** at `<KALI_IP>`
 
 If either IP changes, update:
 
-- The UFW rule for SSH (`from 192.168.1.125`)
+- The UFW rule for SSH (`from <KALI_IP>`)
 - Any references in this README
 - The frontend `config.js` (only if the Ubuntu IP changes)
 
@@ -147,6 +147,6 @@ deliberately not documented here.
 ## Not done yet (future sessions)
 
 - Move the frontend build to `/var/www/` so we can revoke the `o+x`
-  permission on `/home/filipe/`.
+  permission on `/home/<user>/`.
 - Optionally restrict SSH to a fixed MAC-based reservation on the router,
   so the UFW rule can be narrowed to a single IP with confidence.
