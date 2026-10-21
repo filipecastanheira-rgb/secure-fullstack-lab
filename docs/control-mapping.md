@@ -253,89 +253,18 @@ implemented; Level 2 controls are distributed across Phases 4 to 8.
 
 ## 4. ISO/IEC 27001:2022 — Annex A
 
-The 2022 revision of Annex A organises 93 controls into four themes:
-Organizational (5.x), People (6.x), Physical (7.x), and Technological
-(8.x). This mapping covers the controls applicable to a small lab
-environment.
+The status of each Annex A control is recorded in the Statement of
+Applicability, `docs/statement-of-applicability-v2.md`. That document is
+the single source of truth for control status. This mapping does not
+repeat it, so the two cannot diverge.
 
-### 4.1 Organizational controls (5.x)
+`backend/tests/test_soa_consistency.py` checks the Statement of
+Applicability for identifiers, states and totals. It does not check
+whether each justification is true.
 
-| Control  | Title                                          | Status                    |
-|----------|------------------------------------------------|---------------------------|
-| A.5.1    | Policies for information security              | `[implemented]` — password policy, incident response |
-| A.5.7    | Threat intelligence                            | `[implemented]` — threat model with framework references |
-| A.5.9    | Inventory of information and other associated assets | `[implemented]` — threat model §4 |
-| A.5.14   | Information transfer                           | `[implemented]` — TLS 1.2/1.3, security headers |
-| A.5.15   | Access control                                 | `[implemented]` — password policy §3, §5 |
-| A.5.16   | Identity management                            | `[partial]` — planned account separation in Phase 9 |
-| A.5.17   | Authentication information                     | `[implemented]` — password policy §3, §4 |
-| A.5.18   | Access rights                                  | `[partial]` — RBAC planned for Phase 4 |
-| A.5.19   | Information security in supplier relationships | `[n/a]` — no suppliers of the lab beyond GitHub, covered separately |
-| A.5.23   | Information security for use of cloud services | `[partial]` — GitHub in threat model §7.8 |
-| A.5.24   | Information security incident management planning and preparation | `[implemented]` — incident response §1, §2 |
-| A.5.25   | Assessment and decision on information security events | `[implemented]` — incident response §3, §4 |
-| A.5.26   | Response to information security incidents     | `[implemented]` — incident response §5, §6 |
-| A.5.27   | Learning from information security incidents   | `[implemented]` — incident response §7 |
-| A.5.28   | Collection of evidence                         | `[implemented]` — incident response §6 (each playbook) |
-| A.5.29   | Information security during disruption         | `[planned: phase 10]` |
-| A.5.30   | ICT readiness for business continuity          | `[planned: phase 10]` |
-| A.5.34   | Privacy and protection of PII                  | `[planned: phase 4]` — GDPR section in threat model §3.4 |
-
-### 4.2 People controls (6.x)
-
-| Control  | Title                                          | Status                    |
-|----------|------------------------------------------------|---------------------------|
-| A.6.1    | Screening                                      | `[n/a]` — single-person lab |
-| A.6.3    | Information security awareness, education and training | `[implemented]` — certifications; documented in this project |
-| A.6.5    | Responsibilities after termination or change of employment | `[n/a]` — single-person lab |
-
-### 4.3 Physical controls (7.x)
-
-| Control  | Title                                          | Status                    |
-|----------|------------------------------------------------|---------------------------|
-| A.7.1    | Physical security perimeters                   | `[accepted]` — out of scope, documented as compensating control |
-| A.7.4    | Physical security monitoring                   | `[accepted]` — host laptop stays at home; disk encryption in place |
-| A.7.7    | Clear desk and clear screen                    | `[implemented]` — operator discipline |
-| A.7.10   | Storage media                                  | `[planned: phase 10]` — external disk handling |
-
-### 4.4 Technological controls (8.x)
-
-| Control  | Title                                          | Status                    |
-|----------|------------------------------------------------|---------------------------|
-| A.8.1    | User endpoint devices                          | `[partial]` — disk encryption, device stays at home |
-| A.8.2    | Privileged access rights                       | `[partial]` — planned account separation |
-| A.8.3    | Information access restriction                 | `[partial]` — schemas separate, RBAC pending |
-| A.8.5    | Secure authentication                          | `[partial]` — SSH key-only; application auth pending |
-| A.8.8    | Management of technical vulnerabilities        | `[implemented]` — risk register; scans planned for Phase 6 |
-| A.8.9    | Configuration management                       | `[implemented]` — `deploy/` directory |
-| A.8.12   | Data leakage prevention                        | `[partial]` — TLS in place; DLP not applicable to a lab |
-| A.8.13   | Information backup                             | `[planned: phase 10]` |
-| A.8.15   | Logging                                        | `[planned: phase 8]` |
-| A.8.16   | Monitoring activities                          | `[planned: phase 8]` |
-| A.8.20   | Network security                               | `[implemented]` — UFW, network isolation |
-| A.8.21   | Security of network services                   | `[implemented]` — Nginx, TLS |
-| A.8.22   | Segregation of networks                        | `[implemented]` — lab networks isolated from home network |
-| A.8.23   | Web filtering                                  | `[n/a]` — single-purpose lab |
-| A.8.24   | Use of cryptography                            | `[implemented]` — TLS, PKI, key separation |
-| A.8.25   | Secure development life cycle                  | `[partial]` — this project demonstrates the practice |
-| A.8.26   | Application security requirements               | `[implemented]` — threat model defines them |
-| A.8.28   | Secure coding                                  | `[implemented]` — Pydantic, SQLAlchemy |
-| A.8.31   | Separation of development, test and production environments | `[n/a]` — single environment (lab) |
-| A.8.32   | Change management                              | `[implemented]` — Git history with conventional commits |
-| A.8.34   | Protection of information systems during audit testing | `[n/a]` — no external audit |
-
-### 4.5 Summary — ISO 27001 status
-
-| Status          | Count |
-|-----------------|-------|
-| `[implemented]` | 24    |
-| `[partial]`     | 12    |
-| `[planned]`     | 7     |
-| `[accepted]`    | 2     |
-| `[n/a]`         | 8     |
-
-No control is unassessed. Every applicable control is either implemented,
-partial with a roadmap, planned, or explicitly accepted with rationale.
+An earlier version of this section listed 53 controls with their own
+status. It was removed because it had diverged from the Statement of
+Applicability. It remains in the git history.
 
 ---
 
