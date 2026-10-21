@@ -1327,22 +1327,40 @@ attacker, they can hide their activity by deleting the events.
 
 #### I — Information disclosure
 
-**I1. Private repository, but not encrypted at rest on our side.**
-The repository is private. Content is not visible to unauthenticated users.
-*Status:* `[implemented]` — but assumes the code is safe to leak, i.e. no
-secrets in history. Verified as a pre-requisite to making the repo public.
+**I1. Public repository.**
+The repository is public, so the code is intentionally disclosed. The
+relevant risk is leaking secrets or environment details through the
+repository or its history. See I2 and I3.
+*Status:* `[implemented partial]` — no secrets detected in history (see
+I2). Residual: environment details in history (see I3).
 
 **I2. Secrets in history.**
 If any secret was ever committed — even if removed later — it remains in
 the history and is recoverable with `git log -p`.
-*Status:* `[gap]` — a `gitleaks` scan of the full history is planned
-before the repo is made public.
+A full-history scan was run locally with the official `gitleaks` image
+and its default rules on 2026-10-22: 117 commits scanned, no leaks
+found. The commit count matched `git rev-list --count --no-merges --all`
+after `git fetch --all --prune`.
+*Status:* `[implemented partial]` — default rules only, so a secret in
+an unusual format could be missed. Residual: no recurring full-history
+scan.
 
 **I3. `.gitignore` protects new files, not old ones.**
 The extended `.gitignore` we added prevents *future* commits of keys and
 certificates. It does not remove anything that was committed previously.
-*Status:* `[gap]` — a full history scan is required as a pre-publication
-step.
+The full-history scan in I2 covers secrets. It does not cover environment
+details: earlier commits contain private (RFC 1918) addresses of the lab
+network, home-directory paths and the operator account name (checked on
+2026-10-22 with `git log --all -S`: 28 and 22 commits touched the address
+and the path). Most documentation no longer contains them, but some
+configuration files and the journal still do.
+The addresses belong to the lab network behind the OPNsense VM, not to the
+home network, and the lab addressing is usually changed when a project
+ends. That is not a commitment. Rewriting the history of a public
+repository with signed commits and merged pull requests has real costs.
+*Status:* `[accepted]` — accepted by the project owner on 2026-10-22.
+Residual: lab addresses, paths and the operator account name remain
+readable in history and in some current configuration files.
 
 #### D — Denial of service
 
