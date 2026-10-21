@@ -520,11 +520,13 @@ would detect changes. It would not prevent them, but detection is what
 matters here.
 
 **T3. Static content integrity.**
-The `dist/` folder is served from `/home/filipe/`. Any process running as
-`filipe` can overwrite the served files.
-*Status:* `[gap]` — move to `/var/www/secure-fullstack/` with `root`-owned
-files and directory write restricted to a deploy process. Planned for
-Phase 12.
+The built frontend is served from `/var/www/secure-fullstack/`, owned by
+`www-data:www-data` with mode `drwxr-xr-x` (checked 2026-10-21). The
+operator account can no longer overwrite the served files, but the Nginx
+user owns them, so a compromised Nginx worker could still modify them.
+*Status:* `[implemented partial]` — files moved out of the home directory
+and not writable by the operator account. Residual: ownership by
+`www-data` instead of `root`.
 
 #### R — Repudiation
 
@@ -812,11 +814,17 @@ SQLite audit triggers.
 #### I — Information disclosure
 
 **I1. File readable by the application user.**
-`lab.db` lives in `/home/filipe/secure-fullstack-lab/backend/` and is
-readable by `filipe`. Any process running as `filipe` can read the entire
-dataset. This is the same trust-collapse issue as Finding #2.
-*Status:* `[implemented partial]` — expected behaviour, no privilege
-separation.
+`lab.db` lives in `/var/lib/secure-fullstack/`, owned by
+`secure-app:secure-app` with mode `0640`, in a directory with mode `0750`
+(checked 2026-10-21). The operator account is not in the `secure-app`
+group, so it cannot read the database directly. Any process running as
+`secure-app` can read the entire dataset, which is expected because it is
+the application user. The operator can still reach the data through
+`sudo` or equivalent privileged access, the same trust problem as
+Finding #2.
+*Status:* `[implemented partial]` — database moved out of the home
+directory and readable only by the application user and root. Residual:
+operator privileged access.
 
 **I2. Backups unprotected (future).**
 When backups are implemented (Phase 10), copies of `lab.db` will exist.

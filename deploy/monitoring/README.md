@@ -92,8 +92,8 @@ Check the schedules:
 
 Or run the scripts directly:
 
-    sudo /home/filipe/secure-fullstack-lab/deploy/monitoring/generate-goaccess-report.sh
-    sudo /home/filipe/secure-fullstack-lab/deploy/monitoring/correlation-check.sh
+    sudo /usr/local/sbin/generate-goaccess-report.sh
+    sudo /usr/local/sbin/correlation-check.sh
 
 ## Notes on the scripts
 
