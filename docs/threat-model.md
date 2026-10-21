@@ -520,11 +520,13 @@ would detect changes. It would not prevent them, but detection is what
 matters here.
 
 **T3. Static content integrity.**
-The `dist/` folder is served from `/home/filipe/`. Any process running as
-`filipe` can overwrite the served files.
-*Status:* `[gap]` — move to `/var/www/secure-fullstack/` with `root`-owned
-files and directory write restricted to a deploy process. Planned for
-Phase 12.
+The built frontend is served from `/var/www/secure-fullstack/`, owned by
+`www-data:www-data` with mode `drwxr-xr-x` (checked 2026-10-21). The
+operator account can no longer overwrite the served files, but the Nginx
+user owns them, so a compromised Nginx worker could still modify them.
+*Status:* `[implemented partial]` — files moved out of the home directory
+and not writable by the operator account. Residual: ownership by
+`www-data` instead of `root`.
 
 #### R — Repudiation
 
@@ -812,11 +814,17 @@ SQLite audit triggers.
 #### I — Information disclosure
 
 **I1. File readable by the application user.**
-`lab.db` lives in `/home/filipe/secure-fullstack-lab/backend/` and is
-readable by `filipe`. Any process running as `filipe` can read the entire
-dataset. This is the same trust-collapse issue as Finding #2.
-*Status:* `[implemented partial]` — expected behaviour, no privilege
-separation.
+`lab.db` lives in `/var/lib/secure-fullstack/`, owned by
+`secure-app:secure-app` with mode `0640`, in a directory with mode `0750`
+(checked 2026-10-21). The operator account is not in the `secure-app`
+group, so it cannot read the database directly. Any process running as
+`secure-app` can read the entire dataset, which is expected because it is
+the application user. The operator can still reach the data through
+`sudo` or equivalent privileged access, the same trust problem as
+Finding #2.
+*Status:* `[implemented partial]` — database moved out of the home
+directory and readable only by the application user and root. Residual:
+operator privileged access.
 
 **I2. Backups unprotected (future).**
 When backups are implemented (Phase 10), copies of `lab.db` will exist.
@@ -1319,22 +1327,40 @@ attacker, they can hide their activity by deleting the events.
 
 #### I — Information disclosure
 
-**I1. Private repository, but not encrypted at rest on our side.**
-The repository is private. Content is not visible to unauthenticated users.
-*Status:* `[implemented]` — but assumes the code is safe to leak, i.e. no
-secrets in history. Verified as a pre-requisite to making the repo public.
+**I1. Public repository.**
+The repository is public, so the code is intentionally disclosed. The
+relevant risk is leaking secrets or environment details through the
+repository or its history. See I2 and I3.
+*Status:* `[implemented partial]` — no secrets detected in history (see
+I2). Residual: environment details in history (see I3).
 
 **I2. Secrets in history.**
 If any secret was ever committed — even if removed later — it remains in
 the history and is recoverable with `git log -p`.
-*Status:* `[gap]` — a `gitleaks` scan of the full history is planned
-before the repo is made public.
+A full-history scan was run locally with the official `gitleaks` image
+and its default rules on 2026-10-22: 117 commits scanned, no leaks
+found. The commit count matched `git rev-list --count --no-merges --all`
+after `git fetch --all --prune`.
+*Status:* `[implemented partial]` — default rules only, so a secret in
+an unusual format could be missed. Residual: no recurring full-history
+scan.
 
 **I3. `.gitignore` protects new files, not old ones.**
 The extended `.gitignore` we added prevents *future* commits of keys and
 certificates. It does not remove anything that was committed previously.
-*Status:* `[gap]` — a full history scan is required as a pre-publication
-step.
+The full-history scan in I2 covers secrets. It does not cover environment
+details: earlier commits contain private (RFC 1918) addresses of the lab
+network, home-directory paths and the operator account name (checked on
+2026-10-22 with `git log --all -S`: 28 and 22 commits touched the address
+and the path). Most documentation no longer contains them, but some
+configuration files and the journal still do.
+The addresses belong to the lab network behind the OPNsense VM, not to the
+home network, and the lab addressing is usually changed when a project
+ends. That is not a commitment. Rewriting the history of a public
+repository with signed commits and merged pull requests has real costs.
+*Status:* `[accepted]` — accepted by the project owner on 2026-10-22.
+Residual: lab addresses, paths and the operator account name remain
+readable in history and in some current configuration files.
 
 #### D — Denial of service
 

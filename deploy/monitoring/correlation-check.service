@@ -1,6 +1,6 @@
 [Unit]
 Description=Correlation check for the Secure Fullstack Lab
-Documentation=file:///home/filipe/secure-fullstack-lab/deploy/monitoring/README.md
+Documentation=https://github.com/filipecastanheira-rgb/secure-fullstack-lab/blob/main/deploy/monitoring/README.md
 After=nginx.service secure-fullstack-api.service
 
 [Service]
