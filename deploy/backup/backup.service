@@ -1,6 +1,6 @@
 [Unit]
 Description=Backup the Secure Fullstack Lab database
-Documentation=file:///home/filipe/secure-fullstack-lab/deploy/backup/README.md
+Documentation=https://github.com/filipecastanheira-rgb/secure-fullstack-lab/blob/main/deploy/backup/README.md
 After=secure-fullstack-api.service
 
 [Service]

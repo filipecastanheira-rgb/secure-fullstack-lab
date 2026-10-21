@@ -1,6 +1,6 @@
 [Unit]
 Description=Daily backup of the Secure Fullstack Lab database
-Documentation=file:///home/filipe/secure-fullstack-lab/deploy/backup/README.md
+Documentation=https://github.com/filipecastanheira-rgb/secure-fullstack-lab/blob/main/deploy/backup/README.md
 
 [Timer]
 OnCalendar=*-*-* 03:00:00

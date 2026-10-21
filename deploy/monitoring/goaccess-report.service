@@ -1,6 +1,6 @@
 [Unit]
 Description=Generate GoAccess HTML report from Nginx access log
-Documentation=file:///home/filipe/secure-fullstack-lab/deploy/monitoring/README.md
+Documentation=https://github.com/filipecastanheira-rgb/secure-fullstack-lab/blob/main/deploy/monitoring/README.md
 After=nginx.service
 
 [Service]

@@ -72,7 +72,7 @@ app.add_middleware(RequestLoggingMiddleware)
 # CORS is intentionally not configured here.
 #
 # The application is served by Nginx on a single origin
-# (https://192.168.1.173), with the frontend and the API under the same
+# (https://<UBUNTU_IP>), with the frontend and the API under the same
 # hostname. There are no cross-origin requests, so no CORS policy is
 # required.
 #
