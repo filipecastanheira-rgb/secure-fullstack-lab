@@ -42,7 +42,7 @@ the caller controls the *query*.
     [
         {
             "hostname": "ubuntu-lab",
-            "ip_address": "192.168.1.173",
+            "ip_address": "<UBUNTU_IP>",
             "os": "Ubuntu 24.04",
             "id": 1,
             "created_at": "2026-09-26T17:23:46.979889"

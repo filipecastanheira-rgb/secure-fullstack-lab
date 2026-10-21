@@ -30,7 +30,7 @@ than the developer intended.
 
 The correct pattern, when CORS is needed at all, is an explicit allowlist
 of known origins — for example
-`allow_origins=["https://192.168.1.173"]` — with no wildcards.
+`allow_origins=["https://<UBUNTU_IP>"]` — with no wildcards.
 
 ### 1.1 The subtlety that makes this vulnerability deceptive
 
@@ -109,7 +109,7 @@ It echoes the caller's origin in both cases and asserts that credentials
 are allowed.
 
 A browser running a page at `https://evil.example.com` that issued
-`fetch('https://192.168.1.173/api/hello', { credentials: 'include' })`
+`fetch('https://<UBUNTU_IP>/api/hello', { credentials: 'include' })`
 would receive the response, read the `Access-Control-Allow-Origin`
 header, find its own origin echoed back, and **allow the JavaScript
 caller to read the response body**.
@@ -131,7 +131,7 @@ header to cross-origin requests:
 - The JWT is stored by the SPA in `localStorage` (or `sessionStorage`).
 - `localStorage` is scoped to the origin. JavaScript running on
   `evil.example.com` cannot read the JWT stored for
-  `https://192.168.1.173`.
+  `https://<UBUNTU_IP>`.
 - Without the JWT, the attacker cannot send an authenticated request —
   they can only send unauthenticated requests, which the API rejects.
 
@@ -170,7 +170,7 @@ with a restrictive allowlist.
     # CORS is intentionally not configured here.
     #
     # The application is served by Nginx on a single origin
-    # (https://192.168.1.173), with the frontend and the API under the same
+    # (https://<UBUNTU_IP>), with the frontend and the API under the same
     # hostname. There are no cross-origin requests, so no CORS policy is
     # required.
     #
@@ -182,7 +182,7 @@ with a restrictive allowlist.
 
 **Why removal, not replacement.** The application's architecture makes
 CORS unnecessary. Nginx serves the frontend and proxies the API under
-the same origin (`https://192.168.1.173`). The browser sees no
+the same origin (`https://<UBUNTU_IP>`). The browser sees no
 cross-origin requests because there are none. Configuring an allowlist
 would be configuring for a scenario that does not exist — a form of
 security theatre that adds complexity without adding protection.

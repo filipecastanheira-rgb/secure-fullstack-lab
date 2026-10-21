@@ -30,7 +30,7 @@ attempt against the login endpoint.
 ## 2. Scenario
 
 **Attacker profile:** A remote actor (in this lab: the Kali VM at
-`192.168.1.125`) sending a scripted sequence of login attempts with wrong
+`<KALI_IP>`) sending a scripted sequence of login attempts with wrong
 passwords, hoping to guess a valid credential.
 
 **Target asset:** `POST /api/auth/login` on the application, reached via
@@ -53,7 +53,7 @@ Nginx on port 443.
 
     for i in $(seq 1 20); do
       curl -sk -o /dev/null -w "%{http_code} " \
-        -X POST https://192.168.1.173/api/auth/login \
+        -X POST https://<UBUNTU_IP>/api/auth/login \
         -H "Content-Type: application/json" \
         -d '{"email":"admin@example.com","password":"tentativa-numero-'$i'"}'
     done
@@ -80,20 +80,20 @@ simulation:
 
 **Excerpt (timestamps and body of the response shown as observed):**
 
-    192.168.1.125 - - [08/Oct/2026:19:41:20 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
-    192.168.1.125 - - [08/Oct/2026:19:41:20 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
-    192.168.1.125 - - [08/Oct/2026:19:41:20 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
-    192.168.1.125 - - [08/Oct/2026:19:41:21 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
-    192.168.1.125 - - [08/Oct/2026:19:41:21 +0100] "POST /api/auth/login HTTP/2.0" 429 178 "-" "curl/8.20.0"
-    192.168.1.125 - - [08/Oct/2026:19:41:21 +0100] "POST /api/auth/login HTTP/2.0" 429 178 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:20 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:20 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:20 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:21 +0100] "POST /api/auth/login HTTP/2.0" 401  39 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:21 +0100] "POST /api/auth/login HTTP/2.0" 429 178 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:21 +0100] "POST /api/auth/login HTTP/2.0" 429 178 "-" "curl/8.20.0"
     ... (14 more lines of 429)
-    192.168.1.125 - - [08/Oct/2026:19:41:23 +0100] "POST /api/auth/login HTTP/2.0" 429 178 "-" "curl/8.20.0"
+    <KALI_IP> - - [08/Oct/2026:19:41:23 +0100] "POST /api/auth/login HTTP/2.0" 429 178 "-" "curl/8.20.0"
 
 **Fields present:**
 
 | Field        | Value                              | What it establishes                    |
 |--------------|------------------------------------|----------------------------------------|
-| Source IP    | `192.168.1.125`                    | Originating host on the lab network    |
+| Source IP    | `<KALI_IP>`                    | Originating host on the lab network    |
 | Timestamp    | `08/Oct/2026:19:41:20` → `19:41:23`| Three-second window, 20 requests       |
 | Method+path  | `POST /api/auth/login HTTP/2.0`    | The endpoint targeted                  |
 | Status       | `401` then `429`                   | Transition from backend rejection to edge rejection |

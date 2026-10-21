@@ -82,7 +82,7 @@ be kept in `deploy/nginx/` once created).
 - The `User=` and `Group=` in the API service mean the process runs as a
   normal user, **not as root**.
 - **Temporary permission note:** Nginx (`www-data`) needs to traverse
-  `/home/filipe/` to reach `frontend/dist/`. This was solved with
-  `chmod o+x /home/filipe`. In a later hardening session, the built assets
+  `/home/<user>/` to reach `frontend/dist/`. This was solved with
+  `chmod o+x /home/<user>`. In a later hardening session, the built assets
   should be moved to `/var/www/secure-fullstack/` so this permission can be
   revoked.
