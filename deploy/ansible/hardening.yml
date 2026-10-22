@@ -200,6 +200,7 @@
           -w /etc/sudoers.d/ -p wa -k sudoers
           -w /etc/audit/rules.d/ -p wa -k audit_config
           -w /home/filipe/secure-fullstack-lab/backend/ -p wa -k app_backend
+          -w /opt/secure-fullstack/backend/ -p wa -k app_backend
           -w /home/filipe/pki/ -p rwa -k pki
           -a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=-1 -k privilege_escalation
           -w /usr/bin/systemctl -p x -k systemctl_exec
