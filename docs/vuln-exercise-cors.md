@@ -328,8 +328,9 @@ belongs in `tests/test_asset_authorization.py` or in a new
   documented as removed in Session 6 (Nginx unifies the origin) and
   reintroduced here for the exercise.
 - `docs/control-mapping.md` — OWASP A01:2021 (Broken Access Control),
-  A05:2021 (Security Misconfiguration); ISO 27001 A.5.14 (Information
-  transfer), A.8.20 (Network security).
+  A05:2021 (Security Misconfiguration).
+- `docs/statement-of-applicability-v2.md` — ISO 27001 A.5.14 (Information
+  transfer), A.8.20 (Networks security).
 - `docs/vuln-exercise-sqli.md` — the first exercise, for contrast.
 - `docs/vuln-exercise-idor.md` — the second exercise, for contrast.
 - MDN Web Docs — *Cross-Origin Resource Sharing (CORS)* — the reference
