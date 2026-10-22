@@ -1,8 +1,8 @@
 # Risk Register — Secure Fullstack Lab
 
 **Owner:** Filipe Castanheira
-**Version:** 1.0
-**Last updated:** 2026-10-04
+**Version:** 1.4
+**Last updated:** 2026-10-22
 **Inputs:** `docs/threat-model.md` (STRIDE analysis, findings #1–#6)
 
 ---
@@ -220,6 +220,21 @@ document exists, with a reference back to this entry.
 | Phase        | Follow-up to Phases 8 and 10 (monitoring, backup). |
 | Residual     | **Low (3)** — editing the scripts now requires root. |
 | Status       | **Mitigated (2026-10-20)** — verified on the VM: `backup.service` created a new backup and `goaccess-report.service` regenerated the report, both from `/usr/local/sbin/`. After a change to either script in the repository, it must be reinstalled with `sudo install`. Lesson: when a risk is found in one unit, review all units of the same kind. |
+
+### R-10 — Backup directory owned by the application user
+
+| Field        | Value |
+|--------------|-------|
+| Source       | External repository audit (finding F-01); confirmed by test on 2026-10-22 |
+| Description  | `/var/backups/secure-fullstack` was owned by `secure-app`, the user the application runs as. As `secure-app`, creating and deleting a file in the directory succeeded, so a compromised application could delete or replace the backups and their `.sha256` files. It could not read the database and secret backups: those files are `root:root`, mode 0640 and 0600. A related hypothesis (a symbolic link planted for the root-run script to follow) was not tested separately; it required the same write access to the directory, which the control removes. The backup README claimed that a compromise of the application could not delete its own backups; the test showed otherwise. |
+| Likelihood   | **2** — the attacker must first compromise the application process. |
+| Impact       | **3** — integrity and availability of the backups are affected, not confidentiality. Moderate: the live database is not touched, and the damage matters when combined with the loss or corruption of the live data. |
+| Severity     | **Medium (6)** |
+| Treatment    | **Mitigate** |
+| Control      | Directory set to `root:root`, mode 0700 on the VM. `backup.sh` now creates it with `install -d -m 700 -o root -g root`, which also resets the permissions of an existing directory. |
+| Phase        | Follow-up to Phase 10 (backup and restore). |
+| Residual     | **Low (3)** — the application user has no access to the directory (likelihood 1, impact 3). |
+| Status       | **Mitigated (2026-10-22)** — verified on the VM: after the change, `touch` as `secure-app` fails with exit 1. With the directory deliberately reset to `secure-app` 0750, `backup.service` (run at 08:56:33) restored `root:root` 0700 and finished with status 0/SUCCESS. The script is installed in `/usr/local/sbin/` and identical to the repository version. |
 
 ---
 
@@ -528,3 +543,4 @@ to "the host and its credentials".
 | 2026-10-19 | 1.1     | Added R-08 (correlation-check service runs a user-writable script as root) and AR-06 (no second reviewer on `main`). |
 | 2026-10-19 | 1.2     | R-08 mitigated: correlation-check script installed root-owned under `/usr/local/sbin/`. |
 | 2026-10-20 | 1.3     | Added R-09 (backup and GoAccess services ran user-writable scripts as root), mitigated the same day after an external audit. |
+| 2026-10-22 | 1.4     | Added R-10 (backup directory owned by the application user, external audit finding F-01), mitigated the same day. |

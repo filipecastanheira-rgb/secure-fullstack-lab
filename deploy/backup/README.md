@@ -58,10 +58,15 @@ intact. See `docs/JOURNAL.md` session 23 for the full test.
 - **SHA256** is stored alongside each backup. Verifying the hash
   detects corruption introduced after the backup was created.
 - **Retention is 7 days.** Older files are removed by the script.
-- **The service runs as `root`.** The database is owned by
-  `secure-app`, and the backup directory is also owned by
-  `secure-app`. Running the backup as `root` means a compromise of the
-  application cannot delete its own backups.
+- **The service runs as `root`, and the backup directory is `root:root`,
+  mode `0700`.** The database is owned by `secure-app`, but the
+  application user has no access to the backups: a compromise of the
+  application cannot delete or replace them. `backup.sh` creates the
+  directory with these permissions on every run (`install -d`).
+  *History:* until 2026-10-22 the directory was owned by `secure-app`,
+  which allowed a compromised application to delete or replace the
+  backups and their checksums. Confirmed by test and fixed on
+  2026-10-22 (see R-10 in `docs/risk-register.md`).
 
 ## Verification
 
