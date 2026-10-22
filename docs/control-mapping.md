@@ -298,26 +298,34 @@ referenced for awareness only — the lab is not in scope of NIS2.
 
 ## 6. Consolidated view
 
+> **Historical snapshot (2026-10-05), not yet re-verified.** The OWASP and
+> NIS2 states below have not been checked against the current code. The
+> ISO column was removed: see the Statement of Applicability v2.
+
 A single table combining the frameworks per area of the project.
 
-| Area             | OWASP Top 10        | ISO 27001              | NIS2        |
-|------------------|---------------------|------------------------|-------------|
-| Authentication   | A07 `[planned: 4]`  | A.5.15–A.5.18 `[partial]` | (i) `[implemented]`, (j) `[partial]` |
-| Authorization    | A01 `[planned: 4]`  | A.8.2, A.8.3 `[partial]` | (i) |
-| Transport        | A02 `[implemented]` | A.8.24 `[implemented]` | (h) |
-| Injection        | A03 `[implemented]` | A.8.28 `[implemented]` | (e) `[partial]` |
-| Design           | A04 `[implemented]` | A.5.7, A.5.9, A.8.26 `[implemented]` | (a) |
-| Configuration    | A05 `[implemented]` | A.8.9 `[implemented]` | (g) |
-| Components       | A06 `[planned: 6]`  | A.8.8 `[implemented]` | (d) `[partial]` |
-| Integrity        | A08 `[planned: 12]` | A.8.32 `[implemented]` | (d) `[partial]` |
-| Logging          | A09 `[planned: 8]`  | A.8.15, A.8.16 `[planned]` | (b) `[implemented]` |
-| SSRF             | A10 `[n/a]`         | A.8.26 `[implemented]` | — |
-| Incident response| —                   | A.5.24–A.5.28 `[implemented]` | (b) |
-| Backup           | —                   | A.8.13 `[planned: 10]` | (c) `[planned]` |
+| Area             | OWASP Top 10        | NIS2 |
+|------------------|---------------------|-------------|
+| Authentication   | A07 `[planned: 4]`  | (i) `[implemented]`, (j) `[partial]` |
+| Authorization    | A01 `[planned: 4]`  | (i) |
+| Transport        | A02 `[implemented]` | (h) |
+| Injection        | A03 `[implemented]` | (e) `[partial]` |
+| Design           | A04 `[implemented]` | (a) |
+| Configuration    | A05 `[implemented]` | (g) |
+| Components       | A06 `[planned: 6]`  | (d) `[partial]` |
+| Integrity        | A08 `[planned: 12]` | (d) `[partial]` |
+| Logging          | A09 `[planned: 8]`  | (b) `[implemented]` |
+| SSRF             | A10 `[n/a]`         | — |
+| Incident response | —                   | (b) |
+| Backup           | —                   | (c) `[planned]` |
 
 ---
 
 ## 7. Gaps and next actions
+
+> **Historical snapshot (2026-10-05), not yet re-verified.** Some of the
+> gaps below may already be closed. Do not read this list as the current
+> state.
 
 The mapping surfaces gaps that are already planned in the roadmap. They
 are listed here as the interface between this document and the phases
@@ -355,3 +363,4 @@ mapping — to make the roadmap traceable to a requirement.
 | Date       | Version | Change                                  | Author |
 |------------|---------|-----------------------------------------|--------|
 | 2026-10-05 | 1.0     | Initial mapping. All three frameworks covered. | Filipe Castanheira |
+| 2026-10-22 | 1.1     | ISO Annex A section replaced by a pointer to the SoA v2; ISO column removed from the consolidated view; sections 6 and 7 marked as unverified snapshots. | Filipe Castanheira |
