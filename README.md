@@ -140,7 +140,7 @@ can be shipped as a scannable artefact — it is not the production path.
 - [`docs/risk-register.md`](docs/risk-register.md) — active, accepted, and deferred risks. Each entry classified by likelihood × impact, with treatment and residual risk. Includes closed risks with commit references.
 - [`docs/password-policy.md`](docs/password-policy.md) — credential requirements, lifecycle, and the two-speed rotation model. Mapped to NIST SP 800-63B and ISO 27001 A.5.17.
 - [`docs/incident-response.md`](docs/incident-response.md) — five playbooks (GitHub compromise, host compromise, CA key compromise, physical loss, data exfiltration) following NIST SP 800-61 Rev. 2.
-- [`docs/control-mapping.md`](docs/control-mapping.md) — mapping of the project's controls to OWASP Top 10, OWASP ASVS, ISO/IEC 27001:2022 Annex A, and NIS2 Article 21(2).
+- [`docs/control-mapping.md`](docs/control-mapping.md) — evidence mapping of the project's controls to OWASP Top 10, OWASP ASVS, and NIS2 Article 21(2). The ISO/IEC 27001:2022 Annex A mapping is in the Statement of Applicability (`docs/statement-of-applicability-v2.md`).
 - [`deploy/`](deploy/) — deployment artefacts: systemd units, Nginx configuration, hardening files, and installation notes.
 
 
@@ -187,8 +187,8 @@ can be shipped as a scannable artefact — it is not the production path.
 - [x] Risk register (likelihood, impact, treatment, residual risk)
 - [x] Password policy with NIST-aligned rotation
 - [x] Incident response playbook (5 scenarios, NIST SP 800-61)
-- [x] Control mapping (OWASP Top 10, ASVS, ISO 27001, NIS2)
-- [x] Statement of Applicability (ISO 27001 Annex A, simplified)
+- [x] Control mapping (OWASP Top 10, ASVS, NIS2)
+- [x] Statement of Applicability (ISO 27001 Annex A, 93 controls)
 - [x] Vulnerability and patch management policy
 - [x] Simulated incident exercise with post-mortem
 

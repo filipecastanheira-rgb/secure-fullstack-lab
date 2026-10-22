@@ -323,8 +323,9 @@ but only when the policy is stated in a form the tool can execute.
 - `docs/threat-model.md` §7.2 — E2 (IDOR), the threat this exercise
   demonstrates. §7.3 — the three-level authorisation model that
   situates the vulnerability at L2.
-- `docs/control-mapping.md` — OWASP A01:2021 (Broken Access Control),
-  ISO 27001 A.5.18 (Access rights), A.8.3 (Information access restriction).
+- `docs/control-mapping.md` — OWASP A01:2021 (Broken Access Control).
+- `docs/statement-of-applicability-v2.md` — ISO 27001 A.5.18 (Access rights),
+  A.8.3 (Information access restriction).
 - `docs/vuln-exercise-sqli.md` — the companion exercise, for contrast.
 - OWASP Top 10 — A01:2021 Broken Access Control (top-ranked since 2017).
 

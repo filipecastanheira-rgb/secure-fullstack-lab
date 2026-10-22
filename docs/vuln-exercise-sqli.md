@@ -195,8 +195,8 @@ same pattern.
 
 - `docs/threat-model.md` §7.2 — T3 (SQL injection), the threat this
   exercise demonstrates.
-- `docs/control-mapping.md` — OWASP A03:2021 (Injection), ISO 27001
-  A.8.28 (Secure coding).
+- `docs/control-mapping.md` — OWASP A03:2021 (Injection).
+- `docs/statement-of-applicability-v2.md` — ISO 27001 A.8.28 (Secure coding).
 - `docs/vulnerability-management-policy.md` — the process that governs
   a finding like this in the normal course of operations.
 - Commits: `vuln/sql-injection` (introduction), `fix/sql-injection` (fix).

@@ -271,7 +271,7 @@ that are being blocked.
 
 - **Entries closed:** none. The exercise did not close a risk.
 - **Entries added:** none. The detection gap is already captured by R-06
-  (no audit trail) and by the control-mapping gaps for A.8.15 and A.8.16.
+  (no audit trail) and by the A.8.15 and A.8.16 gaps discussed above.
 - **Entries modified:** none at this time. The exercise confirms the
   current status of R-06 and the planned Phase 8 work. If a future
   exercise reveals the detection gap is still unaddressed after Phase 8,
@@ -303,7 +303,7 @@ evidence to justify it.
 - `docs/incident-response.md` — the playbooks that were exercised
 - `docs/incident-response.md` §7 — the post-mortem template used here
 - `docs/risk-register.md` — R-06 (no audit trail), DP-05 (SIEM)
-- `docs/control-mapping.md` — A.8.15, A.8.16 (logging and monitoring)
+- `docs/statement-of-applicability-v2.md` — A.8.15, A.8.16 (logging and monitoring; current status)
 - `docs/threat-model.md` §7.2 — D1 (rate limiting threat)
 - NIST SP 800-61 Rev. 2 — the framework used for the post-mortem
 - ISO/IEC 27001:2022 — A.5.27 (Learning from incidents), A.5.28 (Evidence)
