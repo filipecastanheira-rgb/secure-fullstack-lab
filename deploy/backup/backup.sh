@@ -23,7 +23,10 @@ DB_BACKUP="${BACKUP_DIR}/lab-${TIMESTAMP}.db"
 SECRET_BACKUP="${BACKUP_DIR}/jwt-${TIMESTAMP}.secret"
 RETENTION_DAYS=7
 
-mkdir -p "${BACKUP_DIR}"
+# The backup directory must be owned by root and closed to everyone else.
+# If the application user could write here, a compromised application
+# could delete or replace the backups and their checksums.
+install -d -m 700 -o root -g root "${BACKUP_DIR}"
 
 # 1. Database — consistent snapshot
 sqlite3 "${DB_SOURCE}" ".backup '${DB_BACKUP}'"
