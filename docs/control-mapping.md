@@ -269,8 +269,14 @@ allowing access to internal resources.
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
-| No endpoint accepts a URL from the client               | `[implemented]` |
-| Code review for SSRF introduced by future features      | `[planned: phase 4]` |
+| No endpoint accepts a URL from the client               | `[implemented]` — no import of `requests`, `httpx`, `urllib` or `aiohttp`, and no `HttpUrl` or `AnyUrl` type, in `backend/app` |
+| Code review for SSRF introduced by future features      | `[planned]` — no review checklist, CODEOWNERS file or pull request template exists |
+
+**Update 2026-10-23.** The code-review row was `[planned: phase 4]`; that phase has passed and
+no review practice was found, so the phase is removed and the row stays `[planned]`. The first
+row was checked by searching `backend/app` for the imports and types listed; no other search
+was made. `requests` and `httpx` are pinned in `backend/requirements.txt` but neither is imported
+in `backend/app` or `backend/tests`. The overall status is unchanged.
 
 **Rationale.** The current API has no endpoint that fetches a
 user-supplied URL. The risk is noted for future phases — any endpoint
