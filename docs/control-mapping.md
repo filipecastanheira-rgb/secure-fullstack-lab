@@ -47,19 +47,21 @@ framework. It defines ten categories of the most critical risks.
 **Risk.** Users acting outside their intended permissions. Includes IDOR,
 privilege escalation, and missing authorization checks.
 
-**Status.** `[planned: phase 4 and phase 7]`
+**Status.** `[implemented]`
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
-| Endpoint-level authorization dependency (RBAC)          | `[planned: phase 4]` |
-| Row-level ownership verification (IDOR protection)      | `[planned: phase 4]` |
+| Endpoint-level authorization dependency (RBAC)          | `[implemented]` — `require_admin` in `backend/app/dependencies.py` |
+| Row-level ownership verification (IDOR protection)      | `[implemented]` — asset queries filter on `owner_id`; tests in `backend/tests/test_asset_authorization.py` |
 | Field-level response schemas                            | `[implemented]` — Pydantic schemas separate from ORM models |
-| Deny-by-default in API access                           | `[planned: phase 4]` |
-| Deliberate IDOR vulnerability introduced and fixed      | `[planned: phase 7]` |
+| Deny-by-default in API access                           | `[implemented]` — `backend/tests/test_routes_policy.py` fails if a route outside the public list does not require authentication |
+| Deliberate IDOR vulnerability introduced and fixed      | `[implemented]` — see `docs/vuln-exercise-idor.md` (2026-10-10, status Fixed) |
 
-**Current exposure.** The API currently has no authentication, so
-authorization is moot. This is the largest gap in the project and is
-addressed in Phase 4.
+**Update 2026-10-23.** This section previously stated that the API had
+no authentication and that RBAC, ownership checks and deny-by-default
+were planned for Phase 4. They are implemented and covered by tests in
+`backend/tests/`; the statuses above were checked against the code on
+this date. The test results were not re-run for this update.
 
 **Reference.** Threat model §7.3 (three levels of authorization);
 risk register R-02.
@@ -158,17 +160,21 @@ vulnerabilities.
 **Risk.** Weak authentication, credential stuffing, session management
 failures.
 
-**Status.** `[planned: phase 4]`
+**Status.** `[partial]` — GitHub account MFA is still planned.
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
 | Password policy with NIST-aligned rotation              | `[implemented]` — policy written |
 | Password manager with MFA                               | `[implemented]` — operator posture |
 | SSH key authentication instead of password              | `[implemented]` |
-| Argon2id hashing for application users                  | `[planned: phase 4]` |
-| JWT with strong key and fixed algorithm                 | `[planned: phase 4]` |
-| Rate limiting on authentication endpoints               | `[planned: phase 4]` |
+| Argon2id hashing for application users                  | `[implemented]` — `PasswordHasher` in `backend/app/security.py` |
+| JWT with strong key and fixed algorithm                 | `[implemented]` — HS256 fixed on encode and decode; 64-byte random secret |
+| Rate limiting on authentication endpoints               | `[implemented]` — in Nginx, not in the application: login zone at 5 requests per minute (`deploy/nginx/secure-fullstack`, same values active on the VM on 2026-10-23) |
 | MFA on GitHub account                                   | `[planned: phase 12]` |
+
+**Update 2026-10-23.** The Argon2id, JWT and rate-limiting rows were
+previously `[planned: phase 4]`. They were checked against the code and
+the active Nginx configuration on this date.
 
 **Reference.** `docs/password-policy.md`.
 
