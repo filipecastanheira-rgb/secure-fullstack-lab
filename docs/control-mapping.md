@@ -293,19 +293,26 @@ project.
 | ASVS Chapter | Title                          | Status        | Notes |
 |--------------|--------------------------------|---------------|-------|
 | V1           | Architecture, Design, Threat Modelling | `[implemented]` | Threat model in `docs/threat-model.md` |
-| V2           | Authentication                 | `[planned: phase 4]` | |
-| V3           | Session Management             | `[planned: phase 4]` | JWT with short-lived access tokens |
-| V4           | Access Control                 | `[planned: phase 4]` | RBAC + IDOR tests |
+| V2           | Authentication                 | `[partial]`   | Argon2id and 15-character minimum in code; login rate limiting in Nginx; no breached-password screening (see A04) |
+| V3           | Session Management             | `[partial]`   | JWT with 15-minute access and 7-day refresh tokens, algorithm fixed on encode and decode; no revocation before expiry (no `jti` or revocation list found in `security.py`) |
+| V4           | Access Control                 | `[implemented]` | `get_current_user` on four endpoints and `require_admin` on user creation; ownership filter in the asset list query; tests in `backend/tests/test_asset_authorization.py` (not re-read here, see A01) |
 | V5           | Validation, Sanitization, Encoding | `[implemented]` | Pydantic on input, JSON on output |
 | V6           | Stored Cryptography            | `[partial]`   | TLS in place; CA key encryption planned |
-| V7           | Error Handling and Logging     | `[planned: phase 8]` | |
+| V7           | Error Handling and Logging     | `[partial]`   | Structured JSON logging configured at start-up (`setup_logging()` in `main.py`); generic 401 for expired and invalid tokens; auditd and log timers on the host (see A09); error handling not otherwise reviewed |
 | V8           | Data Protection                | `[implemented]` | Classification in threat model §3 |
 | V9           | Communication Security         | `[implemented]` | TLS 1.2/1.3 only |
-| V10          | Malicious Code                  | `[planned: phase 11]` | Image signing, SBOM |
-| V11          | Business Logic                 | `[partial]`   | Validation present; rate limiting missing |
+| V10          | Malicious Code                  | `[partial]`   | SBOM generated and signed (Sigstore bundle); the image is not signed (see A08) |
+| V11          | Business Logic                 | `[partial]`   | Validation present; login rate limiting in Nginx only (5 requests per minute), none in the application |
 | V12          | Files and Resources            | `[n/a]`       | No file upload or resource endpoints |
-| V13          | API and Web Service            | `[partial]`   | REST surface; auth pending |
+| V13          | API and Web Service            | `[partial]`   | REST surface; authentication in place (JWT, `require_admin`); other requirements not reviewed |
 | V14          | Configuration                  | `[implemented]` | Hardening in `deploy/hardening/` |
+
+**Update 2026-10-23.** V2, V3, V4 and V7 were `[planned]` (phases 4 and 8) and V10 was
+`[planned: phase 11]`. The notes of V11 ("rate limiting missing") and V13 ("auth pending")
+no longer held. These rows were checked against `backend/app/security.py`,
+`backend/app/main.py` and `backend/app/logging_config.py`, and against the findings
+recorded in A04, A07, A08 and A09. The content of the authorization tests was not re-read.
+V1, V5, V6, V8, V9, V12 and V14 were not re-checked.
 
 **Level target.** The project targets **ASVS Level 2** (standard for
 applications handling sensitive data). Level 1 controls are largely
