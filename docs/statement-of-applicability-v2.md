@@ -66,7 +66,7 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 | A.6.5 | Responsibilities after termination or change of employment | NA | Not applicable: no employees. |
 | A.6.6 | Confidentiality or non-disclosure agreements | NA | Not applicable: no employees. |
 | A.6.7 | Remote working | NA | Not applicable: no employees. |
-| A.6.8 | Information security event reporting | I | Logged via FastAPI middleware and auditd. |
+| A.6.8 | Information security event reporting | I | Logged via FastAPI middleware and auditd. Auditd watches the deployed backend code (creation and deletion verified 2026-10-22, R-11); venv and /usr/local/sbin are not watched. |
 | **A.7 Physical controls** | | | |
 | A.7.1 | Physical security perimeters | NA | Not applicable: physical host and premises are outside the declared scope (see section 1). |
 | A.7.2 | Physical entry controls | NA | Not applicable: physical host and premises are outside the declared scope (see section 1). |
@@ -97,7 +97,7 @@ The lab simulates a production environment. Controls are deemed **applicable** u
 | A.8.12 | Data leakage prevention | P | No DLP tool; relies on network isolation (UFW). |
 | A.8.13 | Information backup | I | Automated backup + tested restore (`deploy/backup/`). |
 | A.8.14 | Redundancy of information processing facilities | Pl | Applicable, not implemented: single VM; recovery relies on backups (see A.5.30). |
-| A.8.15 | Logging | I | Structured JSON logs, auditd, GoAccess. |
+| A.8.15 | Logging | I | Structured JSON logs, auditd, GoAccess. Auditd watches the deployed backend code (creation and deletion verified 2026-10-22, R-11); venv and /usr/local/sbin are not watched. |
 | A.8.16 | Monitoring activities | I | Correlation script, rate limit alerts (`deploy/monitoring/`). |
 | A.8.17 | Clock synchronisation | I | systemd-timesyncd (default Ubuntu). |
 | A.8.18 | Use of privileged utility programs | P | No specific restrictions beyond UFW/sudo. |
