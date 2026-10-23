@@ -138,7 +138,12 @@ enabled, missing hardening.
 | Debug mode disabled in production                       | `[implemented]` |
 | Server version disclosed in `Server` header             | `[accepted]` — AR-01 in the risk register |
 | No `Host` header validation                             | `[accepted]` — AR-02 |
-| Auditd not configured                                   | `[planned: phase 8]` |
+| Auditd on the host                                      | `[implemented]` — rules in `deploy/hardening/audit-rules.conf`, service active on the VM on 2026-10-23; coverage limits in SoA A.8.15 and R-11 |
+
+**Update 2026-10-23.** The auditd row previously read "Auditd not
+configured" with status `[planned: phase 8]`. Auditd is installed,
+loaded and active. The other rows of this section were not re-checked
+in this update.
 
 ### A06:2021 — Vulnerable and Outdated Components
 
@@ -205,16 +210,22 @@ deserialization.
 **Risk.** Insufficient logging, monitoring, and alerting. Incidents go
 undetected.
 
-**Status.** `[planned: phase 8]`
+**Status.** `[implemented]`
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
-| Structured JSON logging in the API                      | `[planned: phase 8]` |
-| Auditd on the host                                      | `[planned: phase 8]` |
-| GoAccess for Nginx access log analysis                  | `[planned: phase 8]` |
-| Correlation script for repeated auth failures           | `[planned: phase 8]` |
+| Structured JSON logging in the API                      | `[implemented]` — `JsonFormatter` in `backend/app/logging_config.py` |
+| Auditd on the host                                      | `[implemented]` — service active on the VM on 2026-10-23; watches the deployed backend code (see SoA A.8.15 and R-11 for what it does not cover) |
+| GoAccess for Nginx access log analysis                  | `[implemented]` — `goaccess-report.timer` active on the VM on 2026-10-23, last run 09:00 |
+| Correlation script for repeated auth failures           | `[implemented]` — `correlation-check.timer` active on the VM on 2026-10-23, runs every 5 minutes |
 | Fail2Ban active with custom filter                      | `[implemented]` |
 | GitHub push notifications                               | `[implemented]` |
+
+**Update 2026-10-23.** The first four rows were previously
+`[planned: phase 8]`. Auditd and the two timers were checked on the VM
+on this date. For the JSON logging row only the formatter code was
+checked; it was not verified that the application configures it at
+start-up.
 
 ### A10:2021 — Server-Side Request Forgery (SSRF)
 
