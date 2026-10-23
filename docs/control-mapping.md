@@ -145,15 +145,21 @@ enabled, missing hardening.
 **Risk.** Using libraries, frameworks, or services with known
 vulnerabilities.
 
-**Status.** `[planned: phase 6]`
+**Status.** `[partial]` — npm audit and SBOM generation are not implemented.
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
-| SCA scan of Python dependencies (pip-audit)             | `[planned: phase 6]` |
-| SCA scan of Node dependencies (npm audit)               | `[planned: phase 6]` |
-| Dependabot enabled                                      | `[planned: phase 12]` |
+| SCA scan of Python dependencies (pip-audit)             | `[implemented]` — job "Security (bandit, pip-audit)" in `.github/workflows/ci.yml` |
+| SCA scan of Node dependencies (npm audit)               | `[planned: phase 6]` — not implemented: no `npm audit` in `.github/workflows/ci.yml` or `frontend/package.json` (checked 2026-10-23) |
+| Dependabot enabled                                      | `[implemented]` — update pull requests merged (see `docs/JOURNAL.md`, Session 25); no `.github/dependabot.yml` is committed, so the configuration is not versioned |
 | Pinned dependency versions                              | `[implemented]` — lockfiles committed |
 | SBOM generation (CycloneDX via Syft)                    | `[planned: phase 11]` |
+
+**Update 2026-10-23.** The pip-audit and Dependabot rows were
+previously `[planned]` (phase 6 and phase 12). They were checked
+against the CI workflow and the repository history on this date; the
+CI run results were not re-checked. The npm audit and SBOM rows are
+unchanged and confirmed as not implemented.
 
 ### A07:2021 — Identification and Authentication Failures
 
