@@ -71,18 +71,28 @@ risk register R-02.
 **Risk.** Failures related to cryptography, including weak algorithms,
 poor key management, and unprotected data in transit or at rest.
 
-**Status.** `[implemented]`
+**Status.** `[partial]` — the CA private key is not encrypted at rest (R-03) and the cipher suites are not explicitly restricted
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
 | TLS 1.2/1.3 for all client traffic                      | `[implemented]` |
 | HTTP redirected to HTTPS                                | `[implemented]` |
 | Internal PKI for certificate issuance                   | `[implemented]` |
-| Modern cipher suites only (no TLS 1.0/1.1)              | `[implemented]` |
+| Modern cipher suites only (no TLS 1.0/1.1)              | `[partial]` — TLS 1.2/1.3 only (`ssl_protocols`); no explicit `ssl_ciphers`, so the OpenSSL defaults apply |
 | Key separation (CA key vs server key)                   | `[implemented]` |
 | CA private key encrypted at rest                        | `[planned: phase 10]` — risk R-03 |
 | SSH key passphrase                                      | `[implemented]` |
-| Argon2id password hashing for user accounts             | `[planned: phase 4]` |
+| Argon2id password hashing for user accounts             | `[implemented]` — `PasswordHasher` in `backend/app/security.py`, used in `backend/app/main.py` |
+
+**Update 2026-10-23.** The Argon2id row was `[planned: phase 4]`; it was checked against the
+code. The overall status was `[implemented]` while two rows were `[planned]`; it is now
+`[partial]`. The cipher-suites row was `[implemented]`: the Nginx configuration (repository
+and active on the VM) sets `ssl_protocols TLSv1.2 TLSv1.3` and no `ssl_ciphers`, so the
+claim is narrowed. TLS, the HTTP redirect, the internal PKI and key separation were
+checked against the repository, the active Nginx configuration and the certificate and
+key in use (same SHA-256 as the files in the PKI directory; the chain validates). The CA key
+was checked and is unencrypted (the R-03 row is unchanged). The SSH key passphrase row was
+not re-checked.
 
 **Reference.** Threat model §7.7 (PKI); risk register R-03.
 
@@ -95,19 +105,25 @@ injection, command injection, and template injection.
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
-| Parameterized queries via SQLAlchemy ORM                | `[implemented]` |
-| Input validation via Pydantic schemas                   | `[implemented]` |
-| No raw SQL string concatenation                         | `[implemented]` |
-| Deliberate SQL injection introduced and fixed           | `[planned: phase 7]` |
+| Parameterized queries (ORM, bound `text()` search)      | `[implemented]` |
+| Input validation via Pydantic schemas (request bodies)  | `[implemented]` |
+| No raw SQL string concatenation                         | `[implemented]` — none found in `backend/app` (f-strings, `.format()`, `%` and `+` searched) |
+| Deliberate SQL injection introduced and fixed           | `[implemented]` — `docs/vuln-exercise-sqli.md`; regression tests in `backend/tests/test_asset_search.py` |
 
-**Reference.** Threat model §7.2 T3; risk register R-05 for context.
+**Update 2026-10-23.** The last row was `[planned: phase 7]`; the exercise is documented and
+the regression tests exist. The parameterized-queries row said "via SQLAlchemy ORM"; the
+asset search uses `text()` with a bound `:search` parameter, so the wording is narrowed.
+The input-validation row is limited to request bodies; the `search` query parameter has no
+length limit. The reference to R-05 was removed: R-05 is "No rate limiting at any layer".
+
+**Reference.** Threat model §7.2 T3; `docs/vuln-exercise-sqli.md`.
 
 ### A04:2021 — Insecure Design
 
 **Risk.** Missing or ineffective control design. Threat modelling,
 secure design patterns, and reference architectures fall here.
 
-**Status.** `[implemented]`
+**Status.** `[partial]` — password policy is not fully enforced in code
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
@@ -116,7 +132,14 @@ secure design patterns, and reference architectures fall here.
 | Trust boundaries explicitly documented                  | `[implemented]` |
 | Data classification with lifecycle                      | `[implemented]` |
 | Incident response playbook                              | `[implemented]` |
-| Password policy                                         | `[implemented]` |
+| Password policy                                         | `[partial]` — length (15) and Argon2id enforced in code; breached-password screening and predictability checks are not |
+
+**Update 2026-10-23.** The password-policy row was `[implemented]`, as was the overall
+status. `docs/password-policy.md` exists and the code enforces a 15-character minimum
+(`UserCreate`) and Argon2id, but nothing in `backend/app` screens passwords against breached
+lists or checks predictability. The other rows were checked only for the existence of the
+document or section (`docs/threat-model.md` §3 and §5, `docs/risk-register.md`,
+`docs/incident-response.md`); their content was not re-checked.
 
 **Reference.** All documents in `docs/`.
 
