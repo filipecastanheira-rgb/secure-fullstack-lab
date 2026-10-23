@@ -236,6 +236,21 @@ document exists, with a reference back to this entry.
 | Residual     | **Low (3)** — the application user has no access to the directory (likelihood 1, impact 3). |
 | Status       | **Mitigated (2026-10-22)** — verified on the VM: after the change, `touch` as `secure-app` fails with exit 1. With the directory deliberately reset to `secure-app` 0750, `backup.service` (run at 08:56:33) restored `root:root` 0700 and finished with status 0/SUCCESS. The script is installed in `/usr/local/sbin/` and identical to the repository version. |
 
+### R-11 — Production code and virtualenv writable by the application user
+
+| Field        | Value |
+|--------------|-------|
+| Source       | Review of the deployment tree under `/opt/secure-fullstack` after the auditd finding of 2026-10-22; related to R-02 and R-10 |
+| Description  | `/opt/secure-fullstack/backend` and `/opt/secure-fullstack/venv` (37 and 5,839 entries respectively, counted on 2026-10-23) are owned by `secure-app`, the user the API runs as. The parent `/opt/secure-fullstack` is owned by `filipe` with group `secure-app`, mode 0750. The API does not need to write there: the database and the JWT secret live in `/var/lib/secure-fullstack`, and a search of the whole `backend/` tree found no `*.db`, `.jwt_secret` or `*.log` file. As `secure-app`, creating and deleting a file in `backend/` succeeded (test of 2026-10-22). Anyone who can run code as `secure-app` (for example through a flaw in the API) can therefore edit the application code or its dependencies, and the change runs at the next restart. This gives persistence and tampering with responses, not root: the service already reads the database and the JWT secret. By its permissions, the parent directory also lets `filipe` replace `backend/` or `venv/`; this was deduced from the modes and not tested. |
+| Likelihood   | **2** — the attacker must first compromise the application process, or the `filipe` account. |
+| Impact       | **3** — integrity of the running application is affected, not confidentiality beyond what the service already reads, and there is no escalation to root. An impact of 4 would give Medium (8), the same band. |
+| Severity     | **Medium (6)** |
+| Treatment    | **Mitigate** |
+| Control      | (1) Detection, applied: the `app_backend` auditd rule now also watches `/opt/secure-fullstack/backend/` (PR #26). Before it, the rule only watched the working tree under `/home`, so writes by `secure-app` to the deployed code were not logged: the same `touch` as `secure-app` produced no events. After it, `touch` and `rm` as `secure-app` generated CREATE and DELETE events (2026-10-22, 20:01). The `venv/` directory is not watched. (2) Prevention, pending: make `/opt/secure-fullstack`, `backend/` and `venv/` owned by `root`, readable by the group `secure-app` and not writable by it, and record the change in the Ansible playbook, which today runs `chown` to `secure-app` on both trees. Expected to work because the API does not write there; to be confirmed by restarting the service and calling the API. Python will no longer be able to write `.pyc` files, which should only affect start-up time. |
+| Phase        | Follow-up to R-02 (privilege separation). |
+| Residual     | **Low (3)** — with root-owned code, editing it requires root (likelihood 1, impact 3). |
+| Status       | **Open (2026-10-23)** — detection applied for `backend/` and not for `venv/`; prevention pending. |
+
 ---
 
 ## 4. Accepted risks and deferred best practices
@@ -544,3 +559,4 @@ to "the host and its credentials".
 | 2026-10-19 | 1.2     | R-08 mitigated: correlation-check script installed root-owned under `/usr/local/sbin/`. |
 | 2026-10-20 | 1.3     | Added R-09 (backup and GoAccess services ran user-writable scripts as root), mitigated the same day after an external audit. |
 | 2026-10-22 | 1.4     | Added R-10 (backup directory owned by the application user, external audit finding F-01), mitigated the same day. |
+| 2026-10-23 | 1.5     | Added R-11 (production code and virtualenv writable by the application user), open: detection applied for `backend/`, prevention pending. |
