@@ -218,15 +218,25 @@ the active Nginx configuration on this date.
 violations. Includes insecure CI/CD, unsigned updates, and insecure
 deserialization.
 
-**Status.** `[planned: phase 6 and phase 12]`
+**Status.** `[partial]` — branch protection requires neither status checks nor approvals, and only the SBOM is signed
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
-| CI pipeline with integrity checks                       | `[planned: phase 6]` |
-| Signed commits (GPG or SSH)                             | `[planned: phase 12]` |
-| Branch protection on `main`                             | `[planned: phase 12]` |
-| Signed container images (cosign)                        | `[planned: phase 11]` |
+| CI pipeline with integrity checks                       | `[implemented]` — `.github/workflows/ci.yml`: ruff, pytest, bandit, pip-audit, gitleaks, eslint, ZAP baseline; it does not verify artefact integrity |
+| Signed commits (GPG or SSH)                             | `[implemented]` — the maintainer's commits are GPG-signed and shown as Verified on GitHub; not enforced (see branch protection) |
+| Branch protection on `main`                             | `[partial]` — a pull request is required; no required status checks, no required approvals, administrators can bypass |
+| Signed container images (cosign)                        | `[partial]` — only the SBOM is signed (Sigstore bundle `deploy/container/sbom.cdx.json.sigstore`); the image is not |
 | GitHub email notifications on push                      | `[implemented]` |
+
+**Update 2026-10-23.** The overall status was `[planned: phase 6 and phase 12]`. The CI,
+signed-commits and branch-protection rows were `[planned]`; the container-images row was
+`[planned: phase 11]`. The CI jobs were read from the workflow file. Signatures were checked on
+recent commits (`git log`, and the Verified badge on GitHub for one of them); GitHub does not
+require them, and merge commits created on GitHub are not signed by the maintainer. Branch
+protection was read from the repository settings on this date. The digest inside the SBOM
+signature bundle matches the SHA-256 of `sbom.cdx.json`; the signature was not verified with
+`cosign verify-blob`, and no signature of the image was found. The email-notifications row was
+not re-checked.
 
 ### A09:2021 — Security Logging and Monitoring Failures
 
