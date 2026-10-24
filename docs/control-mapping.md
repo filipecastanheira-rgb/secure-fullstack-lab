@@ -347,15 +347,15 @@ categories provide a useful checklist.
 | Ref  | Category                                                        | Status        |
 |------|-----------------------------------------------------------------|---------------|
 | (a)  | Risk analysis and information system security policies          | `[implemented]` — threat model, risk register, policies |
-| (b)  | Incident handling                                               | `[implemented]` — incident response playbook |
+| (b)  | Incident handling                                               | `[partial]` — playbooks IR-1 to IR-5; one simulated exercise (2026-10-08); automatic detection by `correlation-check` (alerts log and journal only, no notification); regulatory notification out of scope; playbook not reviewed since 2026-10-05 |
 | (c)  | Business continuity and crisis management                       | `[partial]` — daily database and JWT secret backup (`backup.timer`, 03:00, 7-day retention, SHA-256), restore tested (RTO 1.4 s, RPO 24 h); not covered: CA key backup (R-03), offline copy (DP-01), continuity plan beyond database restore |
-| (d)  | Supply chain security                                           | `[partial]` — GitHub analysis in threat model; SCA for Python dependencies (`pip-audit` in CI, job Security); no automated dependency updates (no `dependabot.yml`) |
-| (e)  | Security in acquisition, development and maintenance            | `[partial]` — this project demonstrates the practice |
-| (f)  | Policies to assess effectiveness of measures                    | `[partial]` — risk register tracked; audits not yet performed |
+| (d)  | Supply chain security                                           | `[partial]` — GitHub analysis in threat model; SCA for Python dependencies (`pip-audit` in CI, job Security); Dependabot alerts and security updates enabled in the repository settings, version updates not configured (no `dependabot.yml`) |
+| (e)  | Security in acquisition, development and maintenance            | `[partial]` — six CI jobs (ruff, pytest, bandit and pip-audit, gitleaks, eslint, ZAP baseline); `main` requires a pull request and the six jobs to pass on an up-to-date branch; no approvals (AR-06), no CODEOWNERS, administrators can bypass the rule |
+| (f)  | Policies to assess effectiveness of measures                    | `[partial]` — risk register maintained (v1.5); one external repository audit recorded on 2026-10-20 (R-09, R-10; no report kept in the repository); one simulated incident exercise (2026-10-08) |
 | (g)  | Basic cyber hygiene and cybersecurity training                  | `[implemented]` — operator certifications; documented practices |
-| (h)  | Cryptography and encryption policies                            | `[implemented]` — TLS, PKI, password policy |
-| (i)  | Human resources security, access control policies, asset management | `[implemented]` — password policy, threat model asset inventory |
-| (j)  | MFA, secured communications                                     | `[partial]` — SSH keys, password manager MFA; application MFA pending |
+| (h)  | Cryptography and encryption policies                            | `[partial]` — TLS 1.2/1.3 only with a valid internal CA chain; Argon2id password hashing; not covered: CA key stored unencrypted (R-03), no explicit `ssl_ciphers`, no disk encryption visible inside the VM (E-03 and the threat model assume LUKS), no cryptography policy document |
+| (i)  | Human resources security, access control policies, asset management | `[partial]` — password policy, asset inventory in threat model §4; one operator account with full sudo and membership of the `docker` and `lxd` groups, administrative and daily-use accounts not separated (E-01, review overdue), no separation of duties (DP-08) |
+| (j)  | MFA, secured communications                                     | `[partial]` — SSH password authentication disabled (verified on the VM); GitHub 2FA with an authenticator app (settings page, 2026-10-24); SSH key passphrase and password manager MFA stated by the author, not verified; application MFA pending |
 
 **Update 2026-10-24.** Row (c) was `[planned: phase 10]` and row (d) read "SCA planned".
 Phase 10 is done: `backup.service` and `backup.timer` are installed on the VM, the
@@ -365,6 +365,22 @@ service ran successfully on 2026-10-22 and 2026-10-23, and the restore was teste
 is no continuity plan beyond the database restore. `pip-audit` runs in the CI job
 Security against `backend/requirements.txt`; `.github/dependabot.yml` does not exist.
 Rows (a), (b) and (e) to (j) were not re-checked.
+
+**Update 2026-10-24 (second pass).** The note above said that rows (a), (b) and (e) to (j)
+were not re-checked. Rows (b), (e), (f), (h), (i) and (j) have now been checked; rows (a)
+and (g) have not. Row (d) said there were no automated dependency updates: Dependabot
+alerts and security updates are enabled in the repository settings, and only version
+updates are not configured.
+
+Rows (b), (h) and (i) were `[implemented]`. The incident playbook does not mention the
+automatic detection that exists, nobody is notified of an alert, and it was last reviewed
+on 2026-10-05. The CA key is unencrypted and the disk is not encrypted inside the VM.
+The operator account has full sudo and is not separated from daily use. Row (e) read
+"this project demonstrates the practice": `main` required pull requests but no status
+checks (the list of required checks was empty), and the six CI jobs were added as
+required checks on 2026-10-24. Row (f) said audits had not been performed, but an
+external audit is recorded in the risk register. Row (j) now records the GitHub 2FA.
+Row (g) is a statement about the operator and was not verified from the repository.
 
 **Portugal — CNPD and CNCS.** Portugal has designated the **CNCS**
 (National Cybersecurity Centre) as the competent authority for NIS2. In
