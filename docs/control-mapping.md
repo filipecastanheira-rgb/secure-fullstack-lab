@@ -440,6 +440,24 @@ that follow.
 **Every gap has a phase.** None is unplanned. This is the point of the
 mapping — to make the roadmap traceable to a requirement.
 
+> **Update 2026-10-24.** The table above is kept as written on 2026-10-05.
+> Re-checked against the repository (`adb43ed`) and the VM, it is partly
+> out of date. The sentence "Every gap has a phase. None is unplanned."
+> no longer describes the present: several phases are complete and some of
+> the gaps they were meant to close are still open.
+
+| Gap (2026-10-05) | Status on 2026-10-24 | Evidence |
+|---|---|---|
+| No authentication or authorization | Implemented in code: JWT access and refresh tokens, argon2id hashing, `get_current_user` and `require_admin` dependencies, owner-scoped asset queries. No application-level MFA found. The route policy test skips parameterised routes. | `backend/app/security.py`, `dependencies.py`, `main.py`; `test_auth.py`, `test_asset_authorization.py`, `test_routes_policy.py` |
+| No rate limiting on the API | Partly closed: Nginx only (login 5r/min burst 3, API 60r/min burst 20, status 429). None in the application. | `deploy/nginx/secure-fullstack`; identical directives in the active config (`nginx -T`) |
+| No SCA scans in a pipeline | Partly closed: `pip-audit` runs in the CI Security job. No `npm audit`. | `ci.yml` |
+| No structured logging | Implemented in code: JSON formatter, stdout handler, request logging middleware. Destination and retention not verified. | `backend/app/logging_config.py`, `main.py` |
+| No auditd | Closed: 16 rules loaded, identical to the repo. Coverage is limited (`execve` only for euid=0, path watches, `/etc/` not watched as a whole). | VM, loaded rules compared with the repo |
+| No backup or restore test | Partly closed: service and timer installed (03:00), restore tested (RTO 1.4 s, RPO 24 h). Not yet shown that the timer fires on its own. No offline copy. | VM, backup logs of 22 and 23 October |
+| CA key stored unencrypted on the host | Open (R-03). | Verified 2026-10-24 |
+| No 2FA or signed commits on GitHub | Partly closed: 2FA active, the owner's commits are signed, GitHub merge commits are not. `main` requires a PR and the 6 CI checks; administrators can bypass. | GitHub settings |
+| No account separation | Open: one account with full sudo and in the `docker` and `lxd` groups. | VM |
+
 ---
 
 ## 8. References
