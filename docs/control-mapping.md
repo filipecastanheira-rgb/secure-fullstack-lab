@@ -346,13 +346,13 @@ categories provide a useful checklist.
 
 | Ref  | Category                                                        | Status        |
 |------|-----------------------------------------------------------------|---------------|
-| (a)  | Risk analysis and information system security policies          | `[implemented]` — threat model, risk register, policies |
+| (a)  | Risk analysis and information system security policies          | `[partial]` — threat model, risk register (v1.5), and three versioned policies (password, vulnerability management, incident response); no general information security policy; no review date found in the three policies; some statements are out of date (the password policy still marks a Phase 9 item as planned); the vulnerability management policy was not compared with practice |
 | (b)  | Incident handling                                               | `[partial]` — playbooks IR-1 to IR-5; one simulated exercise (2026-10-08); automatic detection by `correlation-check` (alerts log and journal only, no notification); regulatory notification out of scope; playbook not reviewed since 2026-10-05 |
 | (c)  | Business continuity and crisis management                       | `[partial]` — daily database and JWT secret backup (`backup.timer`, 03:00, 7-day retention, SHA-256), restore tested (RTO 1.4 s, RPO 24 h); not covered: CA key backup (R-03), offline copy (DP-01), continuity plan beyond database restore |
 | (d)  | Supply chain security                                           | `[partial]` — GitHub analysis in threat model; SCA for Python dependencies (`pip-audit` in CI, job Security); Dependabot alerts and security updates enabled in the repository settings, version updates not configured (no `dependabot.yml`) |
 | (e)  | Security in acquisition, development and maintenance            | `[partial]` — six CI jobs (ruff, pytest, bandit and pip-audit, gitleaks, eslint, ZAP baseline); `main` requires a pull request and the six jobs to pass on an up-to-date branch; no approvals (AR-06), no CODEOWNERS, administrators can bypass the rule |
 | (f)  | Policies to assess effectiveness of measures                    | `[partial]` — risk register maintained (v1.5); one external repository audit recorded on 2026-10-20 (R-09, R-10; no report kept in the repository); one simulated incident exercise (2026-10-08) |
-| (g)  | Basic cyber hygiene and cybersecurity training                  | `[implemented]` — operator certifications; documented practices |
+| (g)  | Basic cyber hygiene and cybersecurity training                  | `[partial]` — operator certifications stated by the author, not verifiable from the repository; no training or awareness document in `docs/`; "documented practices" does not point to a specific document; single operator, so training covers only the operator |
 | (h)  | Cryptography and encryption policies                            | `[partial]` — TLS 1.2/1.3 only with a valid internal CA chain; Argon2id password hashing; not covered: CA key stored unencrypted (R-03), no explicit `ssl_ciphers`, no disk encryption visible inside the VM (E-03 and the threat model assume LUKS), no cryptography policy document |
 | (i)  | Human resources security, access control policies, asset management | `[partial]` — password policy, asset inventory in threat model §4; one operator account with full sudo and membership of the `docker` and `lxd` groups, administrative and daily-use accounts not separated (E-01, review overdue), no separation of duties (DP-08) |
 | (j)  | MFA, secured communications                                     | `[partial]` — SSH password authentication disabled (verified on the VM); GitHub 2FA with an authenticator app (settings page, 2026-10-24); SSH key passphrase and password manager MFA stated by the author, not verified; application MFA pending |
@@ -381,6 +381,15 @@ checks (the list of required checks was empty), and the six CI jobs were added a
 required checks on 2026-10-24. Row (f) said audits had not been performed, but an
 external audit is recorded in the risk register. Row (j) now records the GitHub 2FA.
 Row (g) is a statement about the operator and was not verified from the repository.
+
+**Update 2026-10-24 (third pass).** Rows (a) and (g), the last two not re-checked, have
+now been checked against `docs/`. Both were `[implemented]` and are now `[partial]`.
+Row (a) listed "threat model, risk register, policies". The documents exist and are
+versioned, but there is no general information security policy, no review date was found
+in the three policies, and `docs/password-policy.md` line 233 still reads `[planned]` for
+Phase 9, which is complete. The vulnerability management policy was read only up to its header
+and was not compared with practice. Row (g) rested on certifications that the repository
+cannot show and on "documented practices" that name no document.
 
 **Portugal — CNPD and CNCS.** Portugal has designated the **CNCS**
 (National Cybersecurity Centre) as the competent authority for NIS2. In
