@@ -348,14 +348,23 @@ categories provide a useful checklist.
 |------|-----------------------------------------------------------------|---------------|
 | (a)  | Risk analysis and information system security policies          | `[implemented]` — threat model, risk register, policies |
 | (b)  | Incident handling                                               | `[implemented]` — incident response playbook |
-| (c)  | Business continuity and crisis management                       | `[planned: phase 10]` — backup and restore |
-| (d)  | Supply chain security                                           | `[partial]` — GitHub analysis in threat model; SCA planned |
+| (c)  | Business continuity and crisis management                       | `[partial]` — daily database and JWT secret backup (`backup.timer`, 03:00, 7-day retention, SHA-256), restore tested (RTO 1.4 s, RPO 24 h); not covered: CA key backup (R-03), offline copy (DP-01), continuity plan beyond database restore |
+| (d)  | Supply chain security                                           | `[partial]` — GitHub analysis in threat model; SCA for Python dependencies (`pip-audit` in CI, job Security); no automated dependency updates (no `dependabot.yml`) |
 | (e)  | Security in acquisition, development and maintenance            | `[partial]` — this project demonstrates the practice |
 | (f)  | Policies to assess effectiveness of measures                    | `[partial]` — risk register tracked; audits not yet performed |
 | (g)  | Basic cyber hygiene and cybersecurity training                  | `[implemented]` — operator certifications; documented practices |
 | (h)  | Cryptography and encryption policies                            | `[implemented]` — TLS, PKI, password policy |
 | (i)  | Human resources security, access control policies, asset management | `[implemented]` — password policy, threat model asset inventory |
 | (j)  | MFA, secured communications                                     | `[partial]` — SSH keys, password manager MFA; application MFA pending |
+
+**Update 2026-10-24.** Row (c) was `[planned: phase 10]` and row (d) read "SCA planned".
+Phase 10 is done: `backup.service` and `backup.timer` are installed on the VM, the
+service ran successfully on 2026-10-22 and 2026-10-23, and the restore was tested
+(see `deploy/backup/README.md` and `docs/JOURNAL.md`, session 23). Row (c) stays
+`[partial]` because the CA key is not backed up, there is no offline copy and there
+is no continuity plan beyond the database restore. `pip-audit` runs in the CI job
+Security against `backend/requirements.txt`; `.github/dependabot.yml` does not exist.
+Rows (a), (b) and (e) to (j) were not re-checked.
 
 **Portugal — CNPD and CNCS.** Portugal has designated the **CNCS**
 (National Cybersecurity Centre) as the competent authority for NIS2. In
