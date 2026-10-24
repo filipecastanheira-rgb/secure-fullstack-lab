@@ -429,6 +429,10 @@ A single table combining the frameworks per area of the project.
 > **Historical snapshot (2026-10-05), not yet re-verified.** Some of the
 > gaps below may already be closed. Do not read this list as the current
 > state.
+>
+> The ISO references in the table are historical. The ISO column was
+> removed from section 6 in version 1.1; the current ISO mapping is in the
+> Statement of Applicability v2 (`docs/statement-of-applicability-v2.md`).
 
 The mapping surfaces gaps that are already planned in the roadmap. They
 are listed here as the interface between this document and the phases
