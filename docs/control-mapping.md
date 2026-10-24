@@ -476,3 +476,4 @@ mapping — to make the roadmap traceable to a requirement.
 |------------|---------|-----------------------------------------|--------|
 | 2026-10-05 | 1.0     | Initial mapping. All three frameworks covered. | Filipe Castanheira |
 | 2026-10-22 | 1.1     | ISO Annex A section replaced by a pointer to the SoA v2; ISO column removed from the consolidated view; sections 6 and 7 marked as unverified snapshots. | Filipe Castanheira |
+| 2026-10-24 | 1.2     | Section 5: status notes for rows (c) and (d), then a second pass checking rows (b), (e), (f), (h), (i) and (j) and correcting row (d); rows (a) and (g) remain unchecked. Section 7: status note added after the 2026-10-05 table, which is kept unchanged. Section 6 and the ISO references in the section 7 table are not yet reconciled. | Filipe Castanheira |
