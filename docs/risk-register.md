@@ -89,6 +89,12 @@ the risk to an acceptable level, not that it eliminates it.
 | Phase        | Phase 10 (backup and restore) — the offline key handling pairs with the backup procedure. |
 | Residual     | **Low (4)** — the key is encrypted at rest and not present on the running host. A compromised operator machine can still decrypt it, but that requires a second factor. |
 
+**Update 2026-10-25.** The Description gives the path as `~/pki/ca.key`. On the VM,
+`ls -l ~/pki/secure-fullstack-lab/` listed `ca.key` in that subdirectory (mode
+`-rw-------`, owner `filipe`, 3272 bytes), and `ls -l ~/pki/` showed only the
+subdirectory `secure-fullstack-lab`. The listing shows metadata only; the key was not
+read. The other rows are unchanged.
+
 
 ### R-04 — GitHub account exposure (supply chain and history tampering)
 
@@ -176,6 +182,24 @@ document exists, with a reference back to this entry.
 | Control      | (1) Install and configure `auditd` with watches on `/etc/`, `/home/<user>/secure-fullstack-lab/backend/`, and `~/pki/`. (2) Optionally, `tlog` for `sudo` session recording. (3) Ship audit logs off-host so a compromised host cannot erase its own evidence. |
 | Phase        | Phase 8 (detection and monitoring). |
 | Residual     | **Low (3)** — commands executed as `filipe` are recorded, changes to sensitive paths are logged. Sessions running as a future `secure-app` user still escape this (see R-02). |
+
+**Update 2026-10-25.** The Description and the Residual row do not reflect the auditd
+rules found on the VM. `sudo auditctl -l` listed 16 loaded rules: file watches on
+`/etc/ssh/sshd_config` and `/etc/ssh/sshd_config.d`, `/etc/nginx`, `/etc/ufw`,
+`/etc/fail2ban`, `/etc/systemd/system`, `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`,
+`/etc/sudoers.d` and `/etc/audit/rules.d` (write and attribute changes);
+`/home/filipe/secure-fullstack-lab/backend` and `/opt/secure-fullstack/backend` (write
+and attribute changes); `/home/filipe/pki` (read, write and attribute changes); an
+execution watch on `/usr/bin/systemctl`; and one syscall rule on `execve` (64-bit) with
+`euid=0` and a login UID of 1000 or more. The statement that auditd is not configured
+to watch sensitive paths therefore no longer holds. The `execve` rule records commands
+run with root privileges by a logged-in user; it does not record commands run as
+`filipe` without elevation, so the Residual statement that commands executed as
+`filipe` are recorded says more than the rules show. Not checked: whether the rules
+persist after a reboot, whether the watch on `/home/filipe/pki` fires for files in its
+subdirectory `secure-fullstack-lab` (where `ca.key` is), session recording (`tlog`),
+and off-host shipping of audit logs. The Likelihood, Impact, Severity and Treatment
+rows are unchanged.
 
 ### R-07 — No pagination on collection endpoints
 
@@ -287,9 +311,22 @@ Recognised practices that are **not applied** in this context, with rationale. N
 | DP-09 | Containerisation of the frontend and reverse proxy | The current deployment (systemd + Nginx) is stable and proven. Only the backend is containerised, to demonstrate supply-chain tooling without rebuilding what already works. | Would apply to a fresh deployment; the concept is demonstrated in the backend phase. |
 | DP-10 | Cloud deployment with posture assessment (Prowler, ScoutSuite) | Contradicts the design premise of the lab (isolated, no public exposure). A separate project. | A future cloud-security repository. |
 
+**Update 2026-10-25.** DP-08: of the three account types it names (admin / daily-use /
+service), only the service account (`secure-app`) was found to be separate. On the VM,
+`/etc/passwd` listed `filipe` as the only user with a UID of 1000 or more, and `filipe`
+is in the groups `adm`, `sudo`, `lxd` and `docker` (see `docs/password-policy.md`,
+section 5.1). DP-03: the rationale says the lab has no service accounts yet; `secure-app`
+exists (Session 22, see R-02). Whether any service credentials are rotated was not
+checked. The rows are kept as written.
+
 ## 5. Risk distribution
 
 Snapshot of the register as of **2026-10-07**, after R-01 and R-05 closure.
+
+**Update 2026-10-25.** This snapshot has not been recalculated. According to the
+revision history (section 7), R-08 to R-11 and AR-06 were added after 2026-10-07, so
+the counts, the lists of active, closed and accepted risks, and the residual projection
+below do not include them.
 
 ### Current state
 
@@ -560,3 +597,4 @@ to "the host and its credentials".
 | 2026-10-20 | 1.3     | Added R-09 (backup and GoAccess services ran user-writable scripts as root), mitigated the same day after an external audit. |
 | 2026-10-22 | 1.4     | Added R-10 (backup directory owned by the application user, external audit finding F-01), mitigated the same day. |
 | 2026-10-23 | 1.5     | Added R-11 (production code and virtualenv writable by the application user), open: detection applied for `backend/`, prevention pending. |
+| 2026-10-25 | 1.6     | R-03: note with the location of `ca.key` on the VM. R-06: note on the auditd rules loaded on the VM. Section 4.2: note on DP-03 and DP-08. Section 5: note that the 2026-10-07 snapshot is not recalculated. R-04 and the other entries were not reviewed. Original text kept. |
