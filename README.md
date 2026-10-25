@@ -240,9 +240,10 @@ rather than silently pending.
   Small fix: the login endpoint should set `request.state.user_id` after
   authenticating the user.
 - [ ] **Refresh token revocation is not implemented.** A leaked refresh
-  token remains valid until it is replaced by the next legitimate
-  refresh. A token version counter per user, or a persistent denylist,
-  would close this. Noted since Phase 4; not yet scheduled.
+  token remains valid until its 7-day expiry: the refresh endpoint
+  reissues tokens but does not invalidate the one that was presented.
+  A `jti` claim with a persistent denylist, or a token version counter
+  per user, would close this. Noted since Phase 4; not yet scheduled.
 - [x] **Statement of Applicability is complete.** Canonical format
   covering all 93 Annex A controls. See
   `docs/statement-of-applicability-v2.md`.
