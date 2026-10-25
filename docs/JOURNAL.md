@@ -4947,3 +4947,33 @@ one that makes the repository visible:
 - Container: `--read-only` deferred; `chmod 777` workaround.
 - The deployed backend in `/opt/secure-fullstack/backend` still runs the
   pre-fix code (identical behaviour); redeploy when convenient.
+
+---
+
+## Session 26 — Audit follow-up: fixes, redeploy, and documentation corrections
+
+### What happened
+
+Work followed a list of findings from an external review of the repository. Each finding was checked against the code before being accepted; only what the finding made false was changed in each pull request.
+
+- **Frontend (2 fixes).** `AssetForm.vue` now sends its POST through `authService.api`, so the request carries the token (it was sent without one). The 401 interceptor no longer redirects on the login request, so a wrong password shows its error message without a page reload.
+- **Backend (4 fixes).** Login always performs one argon2 verification (a dummy hash for unknown emails), with a test that counts the calls. The JWT secret file is created with `os.open(O_CREAT|O_EXCL, 0o600)`, with a test. The logging middleware records unhandled exceptions as 500, with a new test. The tests package sets `JWT_SECRET_FILE` and `DATABASE_URL` defaults, so `pytest` runs without environment setup. The login change equalises the argon2 work; response time was not measured.
+- **Documentation.** The refresh endpoint docstring and the README Known gaps now say that refresh reissues tokens, does not invalidate the one presented, and is valid for 7 days. Threat model S4 no longer says refresh tokens are not implemented. The README Phase 7 test count keeps the historical 33 and adds 40 as of 2026-10-25. Status notes dated 2026-10-25 were added to the risk register and the password policy (commits `5d56f98`, `f419622`).
+- **Test suite.** 40 tests collected by `pytest`.
+- **Redeploy on the VM.** The backend copy was behind `main` in four files (`database.py`, `logging_config.py`, `main.py`, `security.py`). `requirements.txt` also differed in three lines (`certifi`, `filelock`, `setuptools`), so the venv was updated first, then the four files were copied and the service restarted. A backup of the previous `app/` directory was taken before the copy. The frontend was rebuilt and the served directory replaced, after a backup of it. The service started cleanly; `/api/hello` returned 200 and `/api/assets` without a token returned 401.
+- **Browser check.** A wrong password shows the error message without reloading the page. After logging in, an asset created through the form appeared in the table (a test record left in the lab database).
+
+### Lessons
+
+- **A deploy is a diff, not a copy.** Comparing the repository with the running copy first showed both the four changed files and the dependency drift that a plain copy would have missed.
+- **Permissions travel with the files.** `rsync -a` copied the restrictive modes of the build directory (770/660) onto the web root. They were reset to 755/644. Use `--chmod=D755,F644` next time.
+- **A check is only a check if its output is read.** A first attempt to update the venv failed because the service user could not read the file in the home directory, and `pip check` still reported success. The versions were confirmed with `pip freeze`.
+
+### Open items
+
+- The deployed backend in `/opt/secure-fullstack/backend` was redeployed on 2026-10-25 (closes the last item of Session 25). After the deploy, `backend/app`, `backend/requirements.txt` and the served frontend were compared with the repository and found identical.
+- Frontend: automatic token refresh (the interceptor only logs out on 401).
+- Refresh tokens have no persistent denylist or `jti`.
+- Threat model S3 gives the secret path as `backend/.jwt_secret`; to be checked against `security.py`.
+- Threat model S4: whether `HttpOnly` cookies are still absent has not been re-checked in the frontend.
+- Remaining items from the external review (input validation of `ip_address`, systemd sandboxing, Ansible drift, Nginx headers, backups, monitoring, CI hardening, text corrections) are tracked and will be verified one by one.
