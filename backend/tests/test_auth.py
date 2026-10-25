@@ -295,3 +295,32 @@ def test_protected_endpoint_rejects_refresh_token(client, test_admin):
         headers={"Authorization": f"Bearer {refresh_token}"},
     )
     assert response.status_code == 401
+
+
+def test_login_nonexistent_email_still_verifies_a_password(client, monkeypatch):
+    """
+    A non-existent email must still trigger one password verification.
+
+    Without it, argon2 is skipped and the endpoint answers noticeably
+    faster for unknown emails, so response time would reveal which
+    accounts exist even though the message is identical. Counting calls is
+    deterministic; a timing assertion would be flaky.
+    """
+    from app import security
+
+    calls = []
+
+    def spy(plain_password, hashed_password):
+        calls.append(hashed_password)
+        return security.verify_password(plain_password, hashed_password)
+
+    monkeypatch.setattr("app.main.verify_password", spy)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "nobody@test.com", "password": "qualquer-password-longa-ok"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password."
+    assert calls == [security.DUMMY_PASSWORD_HASH]

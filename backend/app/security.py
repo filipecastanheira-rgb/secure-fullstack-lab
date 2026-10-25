@@ -66,6 +66,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
+# A valid argon2id hash of a throwaway password, computed once at import.
+# The login endpoint verifies against it when the email does not exist, so
+# that unknown and known emails cost the same amount of work and the
+# response time does not reveal which accounts exist.
+DUMMY_PASSWORD_HASH = hash_password("throwaway-password-for-timing-equalisation")
+
+
 # =============================================================================
 # JWT
 # =============================================================================

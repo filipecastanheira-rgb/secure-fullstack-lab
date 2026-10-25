@@ -33,6 +33,7 @@ from app.schemas import (
     UserRead,
 )
 from app.security import (
+    DUMMY_PASSWORD_HASH,
     create_access_token,
     create_refresh_token,
     decode_token_of_type,
@@ -293,7 +294,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         .first()
     )
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    # Always run one argon2 verification, even when the email does not exist,
+    # so the response time does not reveal whether the account exists.
+    password_hash = (
+        user.password_hash if user is not None else DUMMY_PASSWORD_HASH
+    )
+    password_ok = verify_password(payload.password, password_hash)
+
+    if user is None or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
