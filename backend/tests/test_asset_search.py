@@ -166,3 +166,39 @@ def test_search_cannot_see_other_users_assets(
     assert response.status_code == 200
     assert len(response.json()) == 1
     assert response.json()[0]["hostname"] == "user-private-host"
+
+
+def test_search_treats_like_wildcards_literally(
+    client, admin_token, db_session, test_admin, searchable_assets
+):
+    """
+    `%` and `_` in the search term are matched literally, not as LIKE
+    wildcards. Before the fix, searching `_` or `%` returned every asset.
+    """
+    db_session.add(
+        models.Asset(
+            hostname="web_01",
+            ip_address="10.0.0.50",
+            os="Test",
+            owner_id=test_admin.id,
+        )
+    )
+    db_session.commit()
+
+    for term, expected in [("%", set()), ("_", {"web_01"}), ("web_0", {"web_01"})]:
+        response = client.get(
+            "/api/assets",
+            params={"search": term},
+            headers=auth_header(admin_token),
+        )
+        assert response.status_code == 200
+        assert {a["hostname"] for a in response.json()} == expected, term
+
+    # As a wildcard, `_` would match the `-` in "ubuntu-lab"; as a literal it
+    # must not.
+    response = client.get(
+        "/api/assets",
+        params={"search": "ubuntu_lab"},
+        headers=auth_header(admin_token),
+    )
+    assert response.json() == []
