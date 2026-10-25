@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 
 import { API_ENDPOINTS } from '../config'
+import { authService } from '../services/auth'
 
 const emit = defineEmits(['created'])
 
@@ -18,27 +19,21 @@ async function submit() {
   loading.value = true
 
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        hostname: hostname.value,
-        ip_address: ipAddress.value,
-        os: os.value,
-      }),
+    await authService.api.post(API_URL, {
+      hostname: hostname.value,
+      ip_address: ipAddress.value,
+      os: os.value,
     })
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.detail?.[0]?.msg || `HTTP ${res.status}`)
-    }
 
     hostname.value = ''
     ipAddress.value = ''
     os.value = ''
     emit('created')
   } catch (err) {
-    error.value = err.message
+    const detail = err.response?.data?.detail
+    error.value =
+      (Array.isArray(detail) ? detail[0]?.msg : detail) ||
+      (err.response ? `HTTP ${err.response.status}` : err.message)
   } finally {
     loading.value = false
   }
