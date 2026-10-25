@@ -78,7 +78,7 @@ poor key management, and unprotected data in transit or at rest.
 | TLS 1.2/1.3 for all client traffic                      | `[implemented]` |
 | HTTP redirected to HTTPS                                | `[implemented]` |
 | Internal PKI for certificate issuance                   | `[implemented]` |
-| Modern cipher suites only (no TLS 1.0/1.1)              | `[partial]` — TLS 1.2/1.3 only (`ssl_protocols`); no explicit `ssl_ciphers`, so the OpenSSL defaults apply |
+| Modern cipher suites only (no TLS 1.0/1.1)              | `[partial]` — TLS 1.2/1.3 only (`ssl_protocols`); no explicit `ssl_ciphers`, so the OpenSSL defaults apply; in TLS 1.2 the server accepted suites without forward secrecy and CBC with SHA-1 when tested from the VM on 2026-10-24 (see the update note below) |
 | Key separation (CA key vs server key)                   | `[implemented]` |
 | CA private key encrypted at rest                        | `[planned: phase 10]` — risk R-03 |
 | SSH key passphrase                                      | `[implemented]` |
@@ -93,6 +93,14 @@ checked against the repository, the active Nginx configuration and the certifica
 key in use (same SHA-256 as the files in the PKI directory; the chain validates). The CA key
 was checked and is unencrypted (the R-03 row is unchanged). The SSH key passphrase row was
 not re-checked.
+
+**Update 2026-10-25.** The cipher-suites row is narrowed further. With `openssl s_client`
+from the VM on 2026-10-24, the server accepted in TLS 1.2 the suites `AES128-SHA`,
+`AES256-SHA` and `AES128-GCM-SHA256` (static RSA, no forward secrecy) and
+`ECDHE-RSA-AES128-SHA` (CBC with SHA-1). A normal connection negotiated
+`TLS_AES_256_GCM_SHA384` (TLS 1.3) and `ECDHE-RSA-AES256-GCM-SHA384` (TLS 1.2). The suites
+were not enumerated, so more may be accepted; a test for 3DES gave no result and its cause
+was not established; `nmap` and `testssl.sh` were not available.
 
 **Reference.** Threat model §7.7 (PKI); risk register R-03.
 
@@ -353,7 +361,7 @@ categories provide a useful checklist.
 | (e)  | Security in acquisition, development and maintenance            | `[partial]` — six CI jobs (ruff, pytest, bandit and pip-audit, gitleaks, eslint, ZAP baseline); `main` requires a pull request and the six jobs to pass on an up-to-date branch; no approvals (AR-06), no CODEOWNERS, administrators can bypass the rule |
 | (f)  | Policies to assess effectiveness of measures                    | `[partial]` — risk register maintained (v1.5); one external repository audit recorded on 2026-10-20 (R-09, R-10; no report kept in the repository); one simulated incident exercise (2026-10-08) |
 | (g)  | Basic cyber hygiene and cybersecurity training                  | `[partial]` — operator certifications stated by the author, not verifiable from the repository; no training or awareness document in `docs/`; "documented practices" does not point to a specific document; single operator, so training covers only the operator |
-| (h)  | Cryptography and encryption policies                            | `[partial]` — TLS 1.2/1.3 only with a valid internal CA chain; Argon2id password hashing; not covered: CA key stored unencrypted (R-03), no explicit `ssl_ciphers`, no disk encryption visible inside the VM (E-03 and the threat model assume LUKS), no cryptography policy document |
+| (h)  | Cryptography and encryption policies                            | `[partial]` — TLS 1.2/1.3 only with a valid internal CA chain; Argon2id password hashing; not covered: CA key stored unencrypted (R-03), no explicit `ssl_ciphers`, and in TLS 1.2 the server accepted `AES128-SHA`, `AES256-SHA`, `ECDHE-RSA-AES128-SHA` and `AES128-GCM-SHA256` when tested with `openssl s_client` from the VM on 2026-10-24 (suites not enumerated), no disk encryption visible inside the VM (E-03 and the threat model assume LUKS), no cryptography policy document |
 | (i)  | Human resources security, access control policies, asset management | `[partial]` — password policy, asset inventory in threat model §4; one operator account with full sudo and membership of the `docker` and `lxd` groups, administrative and daily-use accounts not separated (E-01, review overdue), no separation of duties (DP-08) |
 | (j)  | MFA, secured communications                                     | `[partial]` — SSH password authentication disabled (verified on the VM); GitHub 2FA with an authenticator app (settings page, 2026-10-24); SSH key passphrase and password manager MFA stated by the author, not verified; application MFA pending |
 
@@ -518,3 +526,4 @@ mapping — to make the roadmap traceable to a requirement.
 | 2026-10-24 | 1.2     | Section 5: status notes for rows (c) and (d), then a second pass checking rows (b), (e), (f), (h), (i) and (j) and correcting row (d); rows (a) and (g) remain unchecked. Section 7: status note added after the 2026-10-05 table, which is kept unchanged. Section 6 and the ISO references in the section 7 table are not yet reconciled. | Filipe Castanheira |
 | 2026-10-24 | 1.3     | Section 5: rows (a) and (g) checked against `docs/` and changed from `[implemented]` to `[partial]`, with a third-pass update note; all ten NIS2 rows have now been re-checked, so the statement in 1.2 that rows (a) and (g) remain unchecked no longer applies. Section 6 and the ISO references in the section 7 table are still not reconciled. | Filipe Castanheira |
 | 2026-10-24 | 1.4     | Section 5: row (c) records that no 03:00 run of the backup timer was seen, with a fourth-pass note. Section 6: update note with the status of each area re-checked against code, tests, repository and VM; A02, A04 and A05 are `[partial]`; the 2026-10-05 table is kept unchanged. Section 7: banner states that the ISO references are historical. The SBOM row of A06 is not reconciled. | Filipe Castanheira |
+| 2026-10-25 | 1.5     | Section 5: row (h) records which TLS 1.2 suites the server accepted when tested from the VM on 2026-10-24. Section 2: the cipher-suites row and a new update note record the same observation. The A02 row of section 6 already recorded it and is unchanged. | Filipe Castanheira |
