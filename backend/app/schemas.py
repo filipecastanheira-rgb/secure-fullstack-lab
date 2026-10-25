@@ -13,7 +13,7 @@ touching the database, and vice-versa.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, IPvAnyAddress
 
 # =============================================================================
 # Assets
@@ -34,6 +34,8 @@ class AssetCreate(AssetBase):
     the server from the authenticated user. If it were a field, a client
     could create an asset owned by someone else (mass assignment).
     """
+
+    ip_address: IPvAnyAddress
 
 
 class AssetRead(AssetBase):

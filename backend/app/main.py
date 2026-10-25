@@ -161,7 +161,7 @@ def create_asset(
     """
     asset = models.Asset(
         hostname=payload.hostname,
-        ip_address=payload.ip_address,
+        ip_address=str(payload.ip_address),
         os=payload.os,
         owner_id=current_user.id,
     )
