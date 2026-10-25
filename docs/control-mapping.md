@@ -181,7 +181,7 @@ in this update.
 **Risk.** Using libraries, frameworks, or services with known
 vulnerabilities.
 
-**Status.** `[partial]` — npm audit and SBOM generation are not implemented.
+**Status.** `[partial]` — npm audit is not implemented; the SBOM in the repository dates from 2026-10-18 and nothing in `.github` refers to Syft or an SBOM.
 
 | Control                                                 | Status |
 |---------------------------------------------------------|--------|
@@ -189,13 +189,21 @@ vulnerabilities.
 | SCA scan of Node dependencies (npm audit)               | `[planned: phase 6]` — not implemented: no `npm audit` in `.github/workflows/ci.yml` or `frontend/package.json` (checked 2026-10-23) |
 | Dependabot enabled                                      | `[implemented]` — update pull requests merged (see `docs/JOURNAL.md`, Session 25); no `.github/dependabot.yml` is committed, so the configuration is not versioned |
 | Pinned dependency versions                              | `[implemented]` — lockfiles committed |
-| SBOM generation (CycloneDX via Syft)                    | `[planned: phase 11]` |
+| SBOM generation (CycloneDX via Syft)                    | `[partial]` — generated with Syft 1.54.1 (CycloneDX 1.7) on 2026-10-18 for `localhost/secure-fullstack-api` tag `0.3` and committed in `d123abf`, the only commit listed by `git log --follow` for the file (checked 2026-10-25); nothing in `.github` refers to Syft or an SBOM (checked 2026-10-25); not compared with the image currently running |
 
 **Update 2026-10-23.** The pip-audit and Dependabot rows were
 previously `[planned]` (phase 6 and phase 12). They were checked
 against the CI workflow and the repository history on this date; the
 CI run results were not re-checked. The npm audit and SBOM rows are
 unchanged and confirmed as not implemented.
+
+**Update 2026-10-25.** The SBOM row was `[planned: phase 11]` and the status line said
+that SBOM generation is not implemented. `deploy/container/sbom.cdx.json` exists: it was
+generated with Syft 1.54.1 (CycloneDX 1.7) on 2026-10-18 for `localhost/secure-fullstack-api`
+tag `0.3` and committed in `d123abf`; the file lists 3012 components. Nothing in `.github`
+refers to Syft or an SBOM (checked 2026-10-25), and `git log --follow` lists a single commit for the file. It was not
+compared with the image currently running. The signature is covered under A08. The npm audit
+row is unchanged.
 
 ### A07:2021 — Identification and Authentication Failures
 
@@ -449,7 +457,7 @@ A single table combining the frameworks per area of the project.
 | Injection | A03 | `[implemented]` | Parameterised queries, SQL injection regression tests; `search` has no length limit |
 | Design | A04 | `[partial]` | Minimum length 15 and Argon2id enforced; no check for breached passwords, username or predictable patterns required by the password policy; code caps length at 128 while the policy says no limit |
 | Configuration | A05 | `[partial]` | SSH key-only, root login off, `allowusers`, UFW deny-by-default, API on loopback, security headers verified on the VM; no debug or reload flag in the systemd unit in the repository (the installed unit was not compared); `/docs` and `/openapi.json` return 200 through Nginx; TLS suites (A02); accepted exceptions AR-01 and AR-02 |
-| Components | A06 | `[partial]` | `pip-audit` in CI; no `npm audit`; Dependabot alerts and security updates only; SBOM not reconciled: `deploy/container/sbom.cdx.json` exists while section 2 lists SBOM generation as planned |
+| Components | A06 | `[partial]` | `pip-audit` in CI; no `npm audit`; Dependabot alerts and security updates only; SBOM generated with Syft on 2026-10-18, one commit listed by `git log --follow`, nothing in `.github` refers to it (section 2) |
 | Integrity | A08 | `[partial]` | Pull request and six CI checks required on `main`; administrators can bypass; GitHub merge commits are not signed |
 | Logging | A09 | `[partial]` | JSON request logging reaches journald (verified with a test request on 2026-10-24); auditd with 16 rules; `correlation-check` every 5 minutes; no alert notification; journal retention left at defaults; real client IP behind Nginx not verified |
 | SSRF | A10 | `[n/a]` | No outbound HTTP calls found in `backend/app` |
@@ -527,3 +535,4 @@ mapping — to make the roadmap traceable to a requirement.
 | 2026-10-24 | 1.3     | Section 5: rows (a) and (g) checked against `docs/` and changed from `[implemented]` to `[partial]`, with a third-pass update note; all ten NIS2 rows have now been re-checked, so the statement in 1.2 that rows (a) and (g) remain unchecked no longer applies. Section 6 and the ISO references in the section 7 table are still not reconciled. | Filipe Castanheira |
 | 2026-10-24 | 1.4     | Section 5: row (c) records that no 03:00 run of the backup timer was seen, with a fourth-pass note. Section 6: update note with the status of each area re-checked against code, tests, repository and VM; A02, A04 and A05 are `[partial]`; the 2026-10-05 table is kept unchanged. Section 7: banner states that the ISO references are historical. The SBOM row of A06 is not reconciled. | Filipe Castanheira |
 | 2026-10-25 | 1.5     | Section 5: row (h) records which TLS 1.2 suites the server accepted when tested from the VM on 2026-10-24. Section 2: the cipher-suites row and a new update note record the same observation. The A02 row of section 6 already recorded it and is unchanged. | Filipe Castanheira |
+| 2026-10-25 | 1.6     | Section 2: the SBOM row of A06 changed from `[planned: phase 11]` to `[partial]`, the status line corrected, and an update note added; the 2026-10-23 note is unchanged. Section 6: the A06 row no longer says the SBOM is not reconciled. | Filipe Castanheira |
