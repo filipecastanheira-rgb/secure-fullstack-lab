@@ -324,3 +324,31 @@ def test_login_nonexistent_email_still_verifies_a_password(client, monkeypatch):
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid email or password."
     assert calls == [security.DUMMY_PASSWORD_HASH]
+
+
+def test_jwt_secret_file_is_created_with_mode_0600(tmp_path, monkeypatch):
+    """
+    The JWT secret file must be created with mode 0600 from the start.
+
+    chmod is disabled and the umask fixed at 022, so the test fails if the
+    file is created with default permissions and only restricted
+    afterwards: that leaves a window in which the secret is readable by
+    other users.
+    """
+    import os
+    import stat
+
+    from app import security
+
+    secret_file = tmp_path / "jwt_secret"
+    monkeypatch.setattr(security, "_JWT_SECRET_FILE", secret_file)
+    monkeypatch.setattr("pathlib.Path.chmod", lambda self, mode: None)
+
+    old_umask = os.umask(0o022)
+    try:
+        secret = security._load_or_create_jwt_secret()
+    finally:
+        os.umask(old_umask)
+
+    assert secret_file.read_text() == secret
+    assert stat.S_IMODE(secret_file.stat().st_mode) == 0o600

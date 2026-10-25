@@ -101,8 +101,13 @@ def _load_or_create_jwt_secret() -> str:
         return _JWT_SECRET_FILE.read_text().strip()
 
     secret = secrets.token_urlsafe(64)
-    _JWT_SECRET_FILE.write_text(secret)
-    _JWT_SECRET_FILE.chmod(0o600)
+    # Create the file with mode 0600 from the start. Writing first and
+    # calling chmod afterwards leaves a window in which the secret is
+    # readable with the default permissions. O_EXCL makes creation fail
+    # instead of overwriting a file that appeared in the meantime.
+    fd = os.open(_JWT_SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(secret)
     return secret
 
 
