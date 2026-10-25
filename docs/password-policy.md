@@ -60,6 +60,13 @@ NCSC guidance) converge on length as the dominant factor in resistance to
 offline attacks. Complexity requirements are retained as a general
 expectation, not as the primary control.
 
+**Update 2026-10-25.** The maximum-length row states the policy requirement and is
+unchanged. In the lab, `backend/app/schemas.py` limits the password to 128 characters
+when a user is created (line 61, `min_length=15`, `max_length=128`) and in the login
+schema (`LoginRequest`, line 96, `max_length=128`), so "no limit imposed" does not describe the
+implementation. The requirement to support at least 64 characters is met. Checked by
+reading the code; no request was sent to test the limit.
+
 ### 3.2 Passphrases
 
 Users are encouraged to use **passphrases** — several unrelated words
@@ -230,10 +237,18 @@ code editing). If it is compromised, the attacker inherits little. The
 administrative account is used on demand and is not present in day-to-day
 activity.
 
-**Status in this lab:** `[planned]` — planned for Phase 9 (configuration as
+**Status in this lab:** `[partial]` — planned for Phase 9 (configuration as
 code), when the final set of accounts is known. During the construction
 phase, the operator account retains full `sudo` by design (documented in
 the threat model §7.5).
+
+**Update 2026-10-25.** The label was `[planned]`. `docs/JOURNAL.md` records Phase 9 as
+closed (Session 22), and what it separated was the service: the application runs as
+`secure-app` (no shell, no sudo), which closed R-02. On the VM, `/etc/passwd`
+listed `filipe` as the only user with a UID of 1000 or more, so no separate
+administrative and daily-use accounts were found. `id` showed `filipe` in the groups `adm`,
+`sudo`, `lxd` and `docker`, and `/etc/group` listed `filipe` as the only member of
+`sudo`, `lxd` and `docker`. Checked on 2026-10-25.
 
 ### 5.2 Break-glass accounts
 
@@ -300,6 +315,13 @@ Exceptions are not gaps. They are decisions, and they are recorded.
 | E-02 | SSH key on the operator's Kali VM has no passphrase requirement in a specific case | The key has a passphrase applied as of Session 9 (2026-10-04). No active exception. | Closed |
 | E-03 | Lab database (SQLite) is not encrypted at rest | The host VM disk is encrypted at rest (LUKS); the database file inherits this protection. Additional application-layer encryption is a Phase 10 consideration. | Phase 10 |
 
+**Update 2026-10-25.** E-01: the review date, "Phase 9 completion", has passed and the
+exception was not revised in this document. Phase 9 separated the service account
+(`secure-app`) but not an administrative account from a daily-use account (see 5.1).
+E-03: inside the VM, `lsblk -f` showed `sda2` as `ext4` mounted on `/`, with no
+`crypto_LUKS` layer. This does not show how the disk is stored outside the VM, which
+was not checked. Both rows are kept as written on 2026-10-05.
+
 ---
 
 ## 8. References
@@ -337,6 +359,7 @@ lifecycle portion of that requirement.
 | Date       | Version | Change                                  | Author |
 |------------|---------|-----------------------------------------|--------|
 | 2026-10-05 | 1.0     | Initial policy. Two-speed rotation model documented. | Filipe Castanheira |
+| 2026-10-25 | 1.1     | Status notes added: maximum length (3.1), account separation (5.1, label changed from `[planned]` to `[partial]`), exceptions E-01 and E-03 (7.1). Original text kept. | Filipe Castanheira |
 
 ---
 
