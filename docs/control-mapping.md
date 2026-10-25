@@ -348,7 +348,7 @@ categories provide a useful checklist.
 |------|-----------------------------------------------------------------|---------------|
 | (a)  | Risk analysis and information system security policies          | `[partial]` — threat model, risk register (v1.5), and three versioned policies (password, vulnerability management, incident response); no general information security policy; no review date found in the three policies; some statements are out of date (the password policy still marks a Phase 9 item as planned); the vulnerability management policy was not compared with practice |
 | (b)  | Incident handling                                               | `[partial]` — playbooks IR-1 to IR-5; one simulated exercise (2026-10-08); automatic detection by `correlation-check` (alerts log and journal only, no notification); regulatory notification out of scope; playbook not reviewed since 2026-10-05 |
-| (c)  | Business continuity and crisis management                       | `[partial]` — daily database and JWT secret backup (`backup.timer`, 03:00, 7-day retention, SHA-256), restore tested (RTO 1.4 s, RPO 24 h); not covered: CA key backup (R-03), offline copy (DP-01), continuity plan beyond database restore |
+| (c)  | Business continuity and crisis management                       | `[partial]` — daily database and JWT secret backup (`backup.timer`, 03:00, 7-day retention, SHA-256), restore tested (RTO 1.4 s, RPO 24 h); not covered: CA key backup (R-03), offline copy (DP-01), continuity plan beyond database restore; no 03:00 run of the timer has been seen (every run recorded from 2026-10-21 to 2026-10-24 started in the morning, some of them manual), so the 24 h RPO holds only if the VM is powered on every day |
 | (d)  | Supply chain security                                           | `[partial]` — GitHub analysis in threat model; SCA for Python dependencies (`pip-audit` in CI, job Security); Dependabot alerts and security updates enabled in the repository settings, version updates not configured (no `dependabot.yml`) |
 | (e)  | Security in acquisition, development and maintenance            | `[partial]` — six CI jobs (ruff, pytest, bandit and pip-audit, gitleaks, eslint, ZAP baseline); `main` requires a pull request and the six jobs to pass on an up-to-date branch; no approvals (AR-06), no CODEOWNERS, administrators can bypass the rule |
 | (f)  | Policies to assess effectiveness of measures                    | `[partial]` — risk register maintained (v1.5); one external repository audit recorded on 2026-10-20 (R-09, R-10; no report kept in the repository); one simulated incident exercise (2026-10-08) |
@@ -391,6 +391,12 @@ Phase 9, which is complete. The vulnerability management policy was read only up
 and was not compared with practice. Row (g) rested on certifications that the repository
 cannot show and on "documented practices" that name no document.
 
+**Update 2026-10-24 (fourth pass).** Row (c) now records that no run of `backup.timer` at its
+scheduled 03:00 was seen: every run recorded from 2026-10-21 to 2026-10-24 started in
+the morning, and some were manual. With `Persistent=true` this is consistent with catch-up
+runs when the VM is off at 03:00, which was not confirmed from the boot logs. The 24 h RPO
+therefore holds only if the VM is powered on every day.
+
 **Portugal — CNPD and CNCS.** Portugal has designated the **CNCS**
 (National Cybersecurity Centre) as the competent authority for NIS2. In
 the event of a significant incident, the entity must notify CNCS within
@@ -421,6 +427,26 @@ A single table combining the frameworks per area of the project.
 | SSRF             | A10 `[n/a]`         | — |
 | Incident response | —                   | (b) |
 | Backup           | —                   | (c) `[planned]` |
+
+> **Update 2026-10-24.** The table above is kept as written on 2026-10-05. Each area
+> was re-checked on 2026-10-24 against the code, the tests, the repository
+> (`deploy/`, `docs/`) and the VM. Statuses refer to the OWASP category; NIS2 row
+> statuses are in section 5.
+
+| Area | Reference | Status on 2026-10-24 | Basis |
+|---|---|---|---|
+| Authentication | A07 | `[partial]` | JWT access and refresh tokens, Argon2id, rate limiting in Nginx only (login 5r/min); no application MFA; token expiry not seen in tests |
+| Authorization | A01 | `[implemented]` | Dependencies on every data route, owner-scoped queries, 404 across users, route policy test; that test skips parameterised routes |
+| Transport | A02 | `[partial]` | TLS 1.2 and 1.3 only, but TLS 1.2 accepts suites without forward secrecy (`AES128-SHA`, `AES256-SHA`, `AES128-GCM-SHA256`) and CBC with SHA-1; no `ssl_ciphers` set; checked with `openssl s_client` from the VM, suites not fully enumerated; CA key unencrypted (R-03) |
+| Injection | A03 | `[implemented]` | Parameterised queries, SQL injection regression tests; `search` has no length limit |
+| Design | A04 | `[partial]` | Minimum length 15 and Argon2id enforced; no check for breached passwords, username or predictable patterns required by the password policy; code caps length at 128 while the policy says no limit |
+| Configuration | A05 | `[partial]` | SSH key-only, root login off, `allowusers`, UFW deny-by-default, API on loopback, security headers verified on the VM; no debug or reload flag in the systemd unit in the repository (the installed unit was not compared); `/docs` and `/openapi.json` return 200 through Nginx; TLS suites (A02); accepted exceptions AR-01 and AR-02 |
+| Components | A06 | `[partial]` | `pip-audit` in CI; no `npm audit`; Dependabot alerts and security updates only; SBOM not reconciled: `deploy/container/sbom.cdx.json` exists while section 2 lists SBOM generation as planned |
+| Integrity | A08 | `[partial]` | Pull request and six CI checks required on `main`; administrators can bypass; GitHub merge commits are not signed |
+| Logging | A09 | `[partial]` | JSON request logging reaches journald (verified with a test request on 2026-10-24); auditd with 16 rules; `correlation-check` every 5 minutes; no alert notification; journal retention left at defaults; real client IP behind Nginx not verified |
+| SSRF | A10 | `[n/a]` | No outbound HTTP calls found in `backend/app` |
+| Incident response | NIS2 (b) | `[partial]` | See section 5, row (b) |
+| Backup | NIS2 (c) | `[partial]` | See section 5, row (c), including the 03:00 timer finding |
 
 ---
 
@@ -491,3 +517,4 @@ mapping — to make the roadmap traceable to a requirement.
 | 2026-10-22 | 1.1     | ISO Annex A section replaced by a pointer to the SoA v2; ISO column removed from the consolidated view; sections 6 and 7 marked as unverified snapshots. | Filipe Castanheira |
 | 2026-10-24 | 1.2     | Section 5: status notes for rows (c) and (d), then a second pass checking rows (b), (e), (f), (h), (i) and (j) and correcting row (d); rows (a) and (g) remain unchecked. Section 7: status note added after the 2026-10-05 table, which is kept unchanged. Section 6 and the ISO references in the section 7 table are not yet reconciled. | Filipe Castanheira |
 | 2026-10-24 | 1.3     | Section 5: rows (a) and (g) checked against `docs/` and changed from `[implemented]` to `[partial]`, with a third-pass update note; all ten NIS2 rows have now been re-checked, so the statement in 1.2 that rows (a) and (g) remain unchecked no longer applies. Section 6 and the ISO references in the section 7 table are still not reconciled. | Filipe Castanheira |
+| 2026-10-24 | 1.4     | Section 5: row (c) records that no 03:00 run of the backup timer was seen, with a fourth-pass note. Section 6: update note with the status of each area re-checked against code, tests, repository and VM; A02, A04 and A05 are `[partial]`; the 2026-10-05 table is kept unchanged. Section 7: banner states that the ISO references are historical. The SBOM row of A06 is not reconciled. | Filipe Castanheira |
