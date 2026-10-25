@@ -118,7 +118,19 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         start = time.perf_counter()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # An unhandled exception never produces a response object here,
+            # so without this branch the request would leave no log record
+            # at all. Log it as a 500 and let the exception propagate.
+            self._log(request, 500, start)
+            raise
+        self._log(request, response.status_code, start)
+        return response
+
+    @staticmethod
+    def _log(request, status_code, start):
         duration_ms = (time.perf_counter() - start) * 1000.0
 
         logging.getLogger("app.request").info(
@@ -128,12 +140,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "method": request.method,
                 "path": request.url.path,
                 "query": str(request.url.query),
-                "status_code": response.status_code,
+                "status_code": status_code,
                 "duration_ms": round(duration_ms, 2),
                 "client_ip": _client_ip(request),
                 "user_agent": request.headers.get("user-agent", ""),
                 "user_id": getattr(request.state, "user_id", None),
             },
         )
-
-        return response
