@@ -16,7 +16,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isLogin = error.config?.url?.includes('/api/auth/login');
+    if (error.response?.status === 401 && !isLogin) {
       localStorage.removeItem('access_token');
       window.location.href = '/'; // Redireciona para o login (assumindo que está na raiz)
     }
