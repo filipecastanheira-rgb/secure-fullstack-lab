@@ -323,17 +323,20 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     "refresh". An access token presented here is rejected, which prevents
     a stolen access token from extending its own lifetime.
 
-    Returns both a new access token AND a new refresh token. Rotating the
-    refresh token on every use is the safer behaviour: if a refresh token
-    is leaked, it stops being valid the next time the legitimate client
-    refreshes. Without rotation, a stolen refresh token remains usable for
-    its full 7-day lifetime.
+    Returns both a new access token AND a new refresh token. This is token
+    reissue, not rotation in the security sense: the endpoint is stateless
+    and does not invalidate the refresh token that was presented. The
+    previous refresh token stays valid until its own 7-day expiry, so a
+    leaked token keeps working even after the legitimate client refreshes.
 
-    Note: this implementation does not yet track revoked refresh tokens,
-    so a leaked refresh token that has not been used since the leak would
-    still work until it is replaced by the next legitimate refresh. A
-    full revocation scheme (a token version counter per user) is a future
-    improvement.
+    What does stop a leaked token: the user is re-read from the database on
+    every refresh, so deactivating the account (is_active = False) blocks
+    further refreshes, and the role comes from the database, not from the
+    old token.
+
+    Not implemented: revocation and reuse detection. Closing this gap needs
+    a `jti` claim with a persistent denylist, or a token version counter
+    per user (see Known gaps in the README).
     """
     token_payload = decode_token_of_type(payload.refresh_token, "refresh")
 
