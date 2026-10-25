@@ -210,7 +210,7 @@ can be shipped as a scannable artefact — it is not the production path.
 - [x] Misconfigured CORS — introduced, **missed by all scanners**, fixed, regression test added
 - [x] Before/after evidence in `docs/vuln-exercise-{sqli,idor,cors}.md`
 - [x] Confirmed limitation: 1 of 3 vulnerabilities detected by CI; the other 2 required human analysis and written tests
-- [x] Every exercise has a regression test (33 tests in the suite)
+- [x] Every exercise has a regression test (33 tests in the suite at the end of this phase; 40 as of 2026-10-25)
 
 ### Phase 8 — Detection and monitoring (complete)
 
