@@ -3,7 +3,7 @@
 **Method:** STRIDE
 **Version:** 1.0 (draft)
 **Owner:** Filipe Castanheira
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-25
 
 ---
 
@@ -628,7 +628,7 @@ signature for any payload.
 **S4. JWT theft (future).**
 If an attacker can read the token from the browser (XSS, shared device,
 log leakage), they can impersonate the user until the token expires.
-*Status:* `[partial]` — short-lived access tokens (15 min) are in place, along with a strict CSP. Refresh tokens and `HttpOnly` cookies are not yet implemented.
+*Status:* `[partial]` — short-lived access tokens (15 min) are in place, along with a strict CSP. Refresh tokens were added after this section was first written (as of 2026-10-25: 7-day lifetime, accepted only by `/api/auth/refresh`, no revocation list; the token presented stays valid until it expires, and only deactivating the account stops further refreshes). `HttpOnly` cookies are not yet implemented.
 
 #### T — Tampering
 
