@@ -550,6 +550,7 @@ The `Server: nginx/1.28.3 (Ubuntu)` header reveals the exact version.
 *Scenario:* an attacker scans, sees the version, looks up the CVEs, tries
 the one that applies.
 *Status:* `[gap]` — `server_tokens off;` hides it. Trivial fix.
+*Update 2026-10-26:* `[mitigated]` — `server_tokens off;` applied in both `server` blocks; the `Server` header was measured on the VM as `nginx` without version (ports 80 and 443). The `nginx` name is still disclosed; error pages were not measured.
 
 **I2. No authentication on API endpoints.**
 Any client on the lab network can list and create assets.

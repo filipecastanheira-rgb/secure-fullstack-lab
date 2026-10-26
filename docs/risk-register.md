@@ -287,8 +287,8 @@ Documenting what was **not done** is as important as documenting what was. A con
 
 | Ref | Risk | Rationale for acceptance |
 |-----|------|--------------------------|
-| AR-01 | Nginx exposes its exact version in the `Server` header | The lab is not Internet-facing. The marginal benefit of `server_tokens off` is low relative to the operational cost of re-applying it after every Nginx upgrade. Re-evaluate if the lab is ever exposed. |
-| AR-02 | No `Host` header validation in Nginx | Single-site deployment. The impact of a spoofed `Host` header is negligible until a second site exists on the same Nginx instance. |
+| AR-01 | Nginx exposes its exact version in the `Server` header | The lab is not Internet-facing. The marginal benefit of `server_tokens off` is low relative to the operational cost of re-applying it after every Nginx upgrade. Re-evaluate if the lab is ever exposed. **Mitigated 2026-10-26:** `server_tokens off;` is set in both `server` blocks of `deploy/nginx/secure-fullstack` and the `Server` header was measured on the VM as `nginx` without version (ports 80 and 443). The rationale above no longer applies, because the directive is in the repository file and an Nginx upgrade does not undo it. The `nginx` name is still disclosed; error pages were not measured. |
+| AR-02 | No `Host` header validation in Nginx | Single-site deployment. The impact of a spoofed `Host` header is negligible until a second site exists on the same Nginx instance. Note 2026-10-26: the HTTP redirect no longer reflects the `Host` header (it uses `$server_name`), but `proxy_set_header Host $host` in the `/api/` locations still forwards the client's `Host` to the backend; whether the backend uses it was not checked. |
 | AR-03 | No OCSP or CRL for issued certificates | Certificates are few, long-lived, and the lab has a short operational lifetime. Revocation infrastructure is not justified. |
 | AR-04 | Verbose Pydantic validation errors returned to clients | The 422 responses describe the schema. In this lab, this aids the developer and does not expose anything not already documented in the OpenAPI schema exposed by FastAPI. |
 | AR-05 | SQLite write serialisation under concurrent load | Acceptable for the lab. PostgreSQL removes the constraint in production; the SQLAlchemy layer makes migration a connection-string change. |
@@ -600,3 +600,4 @@ to "the host and its credentials".
 | 2026-10-23 | 1.5     | Added R-11 (production code and virtualenv writable by the application user), open: detection applied for `backend/`, prevention pending. |
 | 2026-10-25 | 1.6     | R-03: note with the location of `ca.key` on the VM. R-06: note on the auditd rules loaded on the VM. Section 4.2: note on DP-03 and DP-08. Section 5: note that the 2026-10-07 snapshot is not recalculated. R-04 and the other entries were not reviewed. Original text kept. |
 | 2026-10-26 | 1.7     | Added AR-07 (backups on the same machine, unencrypted, JWT secret next to the database). |
+| 2026-10-26 | 1.8     | AR-01 mitigated (`server_tokens off`). AR-02: note on the redirect and the proxied `Host`. Original text kept. |
