@@ -15,7 +15,7 @@ reintroduced with an explicit origin allowlist.
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -294,7 +294,7 @@ def read_current_user(
 # =============================================================================
 
 @app.post("/api/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate a user and return a JWT access token and refresh token.
 
@@ -333,6 +333,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         )
 
     subject = str(user.id)
+    # Responses that carry tokens must never be stored by browsers or proxies.
+    response.headers["Cache-Control"] = "no-store"
     return TokenResponse(
         access_token=create_access_token(subject=subject, role=user.role),
         refresh_token=create_refresh_token(subject=subject, role=user.role),
@@ -340,7 +342,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/api/auth/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+def refresh(payload: RefreshRequest, response: Response, db: Session = Depends(get_db)):
     """
     Exchange a valid refresh token for a new pair of tokens.
 
@@ -391,6 +393,8 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
         )
 
     new_subject = str(user.id)
+    # Responses that carry tokens must never be stored by browsers or proxies.
+    response.headers["Cache-Control"] = "no-store"
     return TokenResponse(
         access_token=create_access_token(subject=new_subject, role=user.role),
         refresh_token=create_refresh_token(subject=new_subject, role=user.role),
