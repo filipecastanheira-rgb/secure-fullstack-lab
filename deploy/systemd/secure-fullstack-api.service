@@ -11,5 +11,17 @@ ExecStart=/opt/secure-fullstack/venv/bin/python3 -m uvicorn app.main:app --host 
 Restart=on-failure
 RestartSec=3
 
+# Sandboxing. Measured with `systemd-analyze security`.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/secure-fullstack
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=0077
+
 [Install]
 WantedBy=multi-user.target
