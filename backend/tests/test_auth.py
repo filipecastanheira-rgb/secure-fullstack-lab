@@ -255,6 +255,32 @@ def test_refresh_with_valid_refresh_token(client, test_admin):
     assert "refresh_token" in body
 
 
+def test_login_response_is_not_cacheable(client, test_admin):
+    """The login response carries tokens and must send Cache-Control: no-store."""
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "admin-password-muito-longa-ok"},
+    )
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_refresh_response_is_not_cacheable(client, test_admin):
+    """The refresh response carries tokens and must send Cache-Control: no-store."""
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "admin-password-muito-longa-ok"},
+    )
+    refresh_token = login.json()["refresh_token"]
+
+    response = client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+
+
 def test_refresh_rejects_access_token(client, test_admin):
     """
     An access token cannot be used to refresh.
