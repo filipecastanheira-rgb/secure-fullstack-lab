@@ -197,11 +197,11 @@ The gap list (§10) is the input to the risk register.
 | Phase     | Treatment                                                  |
 |-----------|------------------------------------------------------------|
 | Collection| Only data strictly necessary (data minimisation)           |
-| Storage   | SQLite on encrypted-at-rest host (LUKS on the VM disk)     |
+| Storage   | SQLite on the VM disk; no encryption seen (see AR-07)      |
 | Access    | Restricted to app process (UID) and admins (sudo)          |
 | Retention | No personal data currently; once users exist: 24 months    |
 | Deletion  | User deletion request triggers cascade delete  [planned]   |
-| Backup    | Daily snapshot of `lab.db`; retention 7 days    [planned]  |
+| Backup    | Daily snapshot of `lab.db` and JWT secret; 7-day retention |
 
 ### 3.4 GDPR relevance
 
