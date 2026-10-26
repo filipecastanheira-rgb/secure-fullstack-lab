@@ -266,8 +266,8 @@ rather than silently pending.
 - [x] Automated backup of `lab.db` and `.jwt_secret` (daily, systemd timer at 03:00)
 - [x] SHA256 integrity verification on each backup
 - [x] Retention: 7 days
-- [x] **Real restore test performed** (database removed, restored, login verified)
-- [x] **RTO measured: 1.394 seconds**
+- [x] **Real restore test performed** (database removed, restored, login verified; manual, on the same VM, 2026-10-17)
+- [x] **RTO measured: 1.394 seconds** (local restore of a 28 KB database on the same VM; not a measure of recovery from the loss of the machine)
 - [x] **RPO defined: 24 hours**
 - [x] Documented in `deploy/backup/README.md`
 

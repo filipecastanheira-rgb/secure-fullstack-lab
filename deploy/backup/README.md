@@ -49,6 +49,11 @@ restored is a hope. The restoration was performed on 2026-10-17 and
 the login endpoint was tested afterwards to confirm that the data was
 intact. See `docs/JOURNAL.md` session 23 for the full test.
 
+**Scope of this number:** the restore was manual, performed on
+2026-10-17 on the same machine that holds the backups, with a 28 KB
+database. It does not include recovering a lost machine, fetching
+backups from elsewhere or decrypting them.
+
 ## How the backup works
 
 - **`sqlite3 .backup`** is used for the database, not `cp`. The
@@ -56,7 +61,9 @@ intact. See `docs/JOURNAL.md` session 23 for the full test.
   even if a write is in progress. A `cp` can produce a file that is
   half-before and half-after a transaction.
 - **SHA256** is stored alongside each backup. Verifying the hash
-  detects corruption introduced after the backup was created.
+  detects corruption introduced after the backup was created. It proves
+  integrity, not that the backup can be restored, and the hash sits in
+  the same directory as the file it protects.
 - **Retention is 7 days.** Older files are removed by the script.
 - **The service runs as `root`, and the backup directory is `root:root`,
   mode `0700`.** The database is owned by `secure-app`, but the
@@ -67,6 +74,15 @@ intact. See `docs/JOURNAL.md` session 23 for the full test.
   which allowed a compromised application to delete or replace the
   backups and their checksums. Confirmed by test and fixed on
   2026-10-22 (see R-10 in `docs/risk-register.md`).
+
+## Limitations
+
+- Backups are on the same machine as the data, so losing the machine
+  loses both.
+- Backups are not encrypted, and the JWT secret is stored next to the
+  database. Protection is file permissions only.
+- Accepted for the lab, with the rationale and the production design,
+  in AR-07 (`docs/risk-register.md`).
 
 ## Verification
 
