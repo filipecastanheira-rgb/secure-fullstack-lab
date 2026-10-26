@@ -120,14 +120,18 @@ def list_assets(
     never interpolated into the SQL text. This is the fixed version of
     the SQL injection exercise.
     """
+    # Escape LIKE wildcards so that the search is a literal substring match.
+    escaped_search = (
+        search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
     query = text(
         "SELECT id, hostname, ip_address, os, owner_id, created_at "
         "FROM assets WHERE owner_id = :owner_id "
-        "AND hostname LIKE :search ORDER BY id"
+        "AND hostname LIKE :search ESCAPE '\\' ORDER BY id"
     )
     result = db.execute(
         query,
-        {"owner_id": current_user.id, "search": f"%{search}%"},
+        {"owner_id": current_user.id, "search": f"%{escaped_search}%"},
     ).fetchall()
     return [
         {
