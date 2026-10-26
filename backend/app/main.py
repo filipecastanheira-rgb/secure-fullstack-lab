@@ -15,7 +15,7 @@ reintroduced with an explicit origin allowlist.
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -105,6 +105,8 @@ def read_hello():
 @app.get("/api/assets", response_model=list[AssetRead])
 def list_assets(
     search: str = "",
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -119,6 +121,11 @@ def list_assets(
     The `search` parameter is bound as a query parameter (`:search`),
     never interpolated into the SQL text. This is the fixed version of
     the SQL injection exercise.
+
+    The result is paginated with `limit` (default 100, maximum 500) and
+    `offset` (default 0). Results are ordered by id, so pages are stable.
+    A client that sends no parameters receives at most the first 100
+    assets.
     """
     # Escape LIKE wildcards so that the search is a literal substring match.
     escaped_search = (
@@ -127,11 +134,17 @@ def list_assets(
     query = text(
         "SELECT id, hostname, ip_address, os, owner_id, created_at "
         "FROM assets WHERE owner_id = :owner_id "
-        "AND hostname LIKE :search ESCAPE '\\' ORDER BY id"
+        "AND hostname LIKE :search ESCAPE '\\' ORDER BY id "
+        "LIMIT :limit OFFSET :offset"
     )
     result = db.execute(
         query,
-        {"owner_id": current_user.id, "search": f"%{escaped_search}%"},
+        {
+            "owner_id": current_user.id,
+            "search": f"%{escaped_search}%",
+            "limit": limit,
+            "offset": offset,
+        },
     ).fetchall()
     return [
         {

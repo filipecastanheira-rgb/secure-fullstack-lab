@@ -202,3 +202,66 @@ def test_search_treats_like_wildcards_literally(
         headers=auth_header(admin_token),
     )
     assert response.json() == []
+
+
+@pytest.fixture()
+def paged_assets(db_session, test_admin):
+    """Five assets with hostnames pg-1 .. pg-5, owned by the admin."""
+    assets = [
+        models.Asset(
+            hostname=f"pg-{i}",
+            ip_address=f"10.1.0.{i}",
+            os="Test",
+            owner_id=test_admin.id,
+        )
+        for i in range(1, 6)
+    ]
+    for asset in assets:
+        db_session.add(asset)
+    db_session.commit()
+    return assets
+
+
+def _hostnames(client, token, **params):
+    response = client.get(
+        "/api/assets", params=params, headers=auth_header(token)
+    )
+    assert response.status_code == 200
+    return [a["hostname"] for a in response.json()]
+
+
+def test_list_limit_cuts_the_result(client, admin_token, paged_assets):
+    """`limit` caps the number of assets returned, in id order."""
+    assert _hostnames(client, admin_token, search="pg-", limit=2) == ["pg-1", "pg-2"]
+
+
+def test_list_offset_skips_assets(client, admin_token, paged_assets):
+    """`offset` skips the first assets, so pages follow each other."""
+    assert _hostnames(
+        client, admin_token, search="pg-", limit=2, offset=2
+    ) == ["pg-3", "pg-4"]
+    assert _hostnames(
+        client, admin_token, search="pg-", limit=2, offset=4
+    ) == ["pg-5"]
+
+
+def test_list_without_pagination_params_returns_a_plain_array(
+    client, admin_token, paged_assets
+):
+    """No parameters: still a JSON array (the frontend depends on this)."""
+    response = client.get("/api/assets", headers=auth_header(admin_token))
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    assert len(response.json()) == 5
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"limit": 0}, {"limit": 501}, {"limit": -1}, {"offset": -1}, {"limit": "x"}],
+)
+def test_list_rejects_out_of_range_pagination(client, admin_token, params):
+    """Out-of-range or non-numeric pagination values are rejected with 422."""
+    response = client.get(
+        "/api/assets", params=params, headers=auth_header(admin_token)
+    )
+    assert response.status_code == 422
