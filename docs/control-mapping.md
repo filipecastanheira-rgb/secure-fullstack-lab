@@ -167,7 +167,7 @@ enabled, missing hardening.
 | FastAPI bound to loopback                               | `[implemented]` |
 | Nginx security headers (HSTS, CSP, X-Frame-Options, etc.) | `[implemented]` |
 | Debug mode disabled in production                       | `[implemented]` |
-| Server version disclosed in `Server` header             | `[accepted]` — AR-01 in the risk register |
+| Server version disclosed in `Server` header             | `[implemented]` — `server_tokens off` since 2026-10-26 (was `[accepted]`, AR-01) |
 | No `Host` header validation                             | `[accepted]` — AR-02 |
 | Auditd on the host                                      | `[implemented]` — rules in `deploy/hardening/audit-rules.conf`, service active on the VM on 2026-10-23; coverage limits in SoA A.8.15 and R-11 |
 
@@ -456,7 +456,7 @@ A single table combining the frameworks per area of the project.
 | Transport | A02 | `[partial]` | TLS 1.2 and 1.3 only, but TLS 1.2 accepts suites without forward secrecy (`AES128-SHA`, `AES256-SHA`, `AES128-GCM-SHA256`) and CBC with SHA-1; no `ssl_ciphers` set; checked with `openssl s_client` from the VM, suites not fully enumerated; CA key unencrypted (R-03) |
 | Injection | A03 | `[implemented]` | Parameterised queries, SQL injection regression tests; `search` has no length limit |
 | Design | A04 | `[partial]` | Minimum length 15 and Argon2id enforced; no check for breached passwords, username or predictable patterns required by the password policy; code caps length at 128 while the policy says no limit |
-| Configuration | A05 | `[partial]` | SSH key-only, root login off, `allowusers`, UFW deny-by-default, API on loopback, security headers verified on the VM; no debug or reload flag in the systemd unit in the repository (the installed unit was not compared); `/docs` and `/openapi.json` return 200 through Nginx; TLS suites (A02); accepted exceptions AR-01 and AR-02 |
+| Configuration | A05 | `[partial]` | SSH key-only, root login off, `allowusers`, UFW deny-by-default, API on loopback, security headers verified on the VM; no debug or reload flag in the systemd unit in the repository (the installed unit was not compared); `/docs` and `/openapi.json` return 200 through Nginx; TLS suites (A02); accepted exception AR-02 (AR-01 mitigated on 2026-10-26) |
 | Components | A06 | `[partial]` | `pip-audit` in CI; no `npm audit`; Dependabot alerts and security updates only; SBOM generated with Syft on 2026-10-18, one commit listed by `git log --follow`, nothing in `.github` refers to it (section 2) |
 | Integrity | A08 | `[partial]` | Pull request and six CI checks required on `main`; administrators can bypass; GitHub merge commits are not signed |
 | Logging | A09 | `[partial]` | JSON request logging reaches journald (verified with a test request on 2026-10-24); auditd with 16 rules; `correlation-check` every 5 minutes; no alert notification; journal retention left at defaults; real client IP behind Nginx not verified |
