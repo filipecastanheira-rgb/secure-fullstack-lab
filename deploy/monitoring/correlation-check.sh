@@ -58,7 +58,9 @@ emit_alert() {
     fi
 
     echo "ALERT [${category}] ${message}"
-    [ -n "${details}" ] && echo "    ${details}"
+    if [ -n "${details}" ]; then
+        echo "    ${details}"
+    fi
 }
 
 # --- Source 1: Nginx access log (edge) --------------------------------------
