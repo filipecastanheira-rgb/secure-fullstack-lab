@@ -37,6 +37,7 @@ ALERTS_LOG="/var/log/secure-fullstack/alerts.log"
 THRESHOLD_429=10         # rate-limited requests at the Nginx edge
 THRESHOLD_401_PER_IP=20  # failed auths from a single IP (from FastAPI)
 THRESHOLD_5XX=5          # server errors of any kind (from FastAPI)
+THRESHOLD_5XX_EDGE=3     # 5xx answered at the Nginx edge (e.g. 502 when the API is down)
 
 # --- Setup ------------------------------------------------------------------
 
@@ -101,6 +102,20 @@ if [ -r "${NGINX_LOG}" ]; then
         emit_alert "429_BURST" \
             "${COUNT_429} requests were rate-limited at the Nginx edge" \
             "top paths: ${TOP_PATHS}; top IPs: ${TOP_IPS}"
+    fi
+
+    # 5xx at the edge. When the API is down Nginx answers 502/504 and
+    # FastAPI logs nothing, so the FastAPI source below cannot see it.
+    COUNT_EDGE_5XX="$(awk '$9 >= 500' <<< "${NGINX_RECENT}" | wc -l)"
+    if [ "${COUNT_EDGE_5XX}" -gt "${THRESHOLD_5XX_EDGE}" ]; then
+        EDGE_STATUS="$(awk '$9 >= 500 {print $9}' <<< "${NGINX_RECENT}" \
+            | sort | uniq -c | sort -rn | awk '{print $2" ("$1")"}' | paste -sd, -)"
+        EDGE_PATHS="$(awk '$9 >= 500 {print $7}' <<< "${NGINX_RECENT}" \
+            | sort | uniq -c | sort -rn | head -3 \
+            | awk '{print $2" ("$1")"}' | paste -sd, -)"
+        emit_alert "5XX_EDGE" \
+            "${COUNT_EDGE_5XX} server errors answered at the Nginx edge since ${LOOKBACK}" \
+            "statuses: ${EDGE_STATUS}; top paths: ${EDGE_PATHS}"
     fi
 else
     echo "Nginx log not readable: ${NGINX_LOG}" >&2

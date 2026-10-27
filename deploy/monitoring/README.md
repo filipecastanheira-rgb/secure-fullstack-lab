@@ -62,6 +62,7 @@ the exercise — see `docs/JOURNAL.md` session 21.
 | `429_BURST` | Nginx  | > 10 rate-limited requests  |
 | `401_BURST` | FastAPI| > 20 failed auths from one IP |
 | `5XX_BURST` | FastAPI| > 5 server errors           |
+| `5XX_EDGE`  | Nginx  | > 3 responses with status >= 500 (e.g. 502 when the API is down) |
 
 **Where alerts go.** `/var/log/secure-fullstack/alerts.log` (mode 640,
 owner root:root), and stdout (captured by systemd/journald under the
