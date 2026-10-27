@@ -73,6 +73,8 @@ daily (`/etc/logrotate.d/nginx`), so the imprecision is bounded to 24
 hours. A stricter implementation would parse the timestamp from each
 line. The limitation is documented in the script itself.
 
+**Update 2026-10-27.** The paragraph above no longer matches the script. `correlation-check.sh` converts the timestamp of each Nginx log line (field 4) into a sortable `YYYYMMDDHHMMSS` key and counts only lines at or after the cutoff computed from `LOOKBACK` (5 minutes before the start of each run). The script's own comment describes this filtering and does not mention the limitation. Lines whose month name is not recognised are skipped silently. The filtering was read in the code, not measured against a real log.
+
 ## Installation
 
     sudo cp deploy/monitoring/*.service /etc/systemd/system/
