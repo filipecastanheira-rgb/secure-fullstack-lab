@@ -29,7 +29,7 @@ set -euo pipefail
 
 # --- Configuration ----------------------------------------------------------
 
-LOOKBACK="5 minutes ago"
+LOOKBACK="6 minutes ago"
 API_UNIT="secure-fullstack-api.service"
 NGINX_LOG="/var/log/nginx/secure-fullstack.access.log"
 ALERTS_LOG="/var/log/secure-fullstack/alerts.log"
@@ -132,7 +132,7 @@ if [ -n "${LOG_JSON}" ]; then
         PATHS_5XX="$(echo "${LOG_JSON}" | jq -r 'select(.status_code >= 500) | .path' \
             | sort | uniq -c | sort -rn | awk '{print $2" ("$1")"}' | paste -sd, -)"
         emit_alert "5XX_BURST" \
-            "${COUNT_5XX} server errors in the last ${LOOKBACK}" \
+            "${COUNT_5XX} server errors since ${LOOKBACK}" \
             "paths: ${PATHS_5XX}"
     fi
 fi

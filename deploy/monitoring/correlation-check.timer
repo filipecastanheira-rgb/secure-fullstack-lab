@@ -5,6 +5,7 @@ Documentation=https://github.com/filipecastanheira-rgb/secure-fullstack-lab/blob
 [Timer]
 OnBootSec=5min
 OnUnitActiveSec=5min
+AccuracySec=1s
 Persistent=true
 Unit=correlation-check.service
 
