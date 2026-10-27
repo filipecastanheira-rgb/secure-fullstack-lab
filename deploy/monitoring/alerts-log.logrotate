@@ -1,0 +1,11 @@
+# Rotation for the correlation-check alerts log.
+# Install as /etc/logrotate.d/secure-fullstack-alerts (root:root, 0644).
+/var/log/secure-fullstack/alerts.log {
+	weekly
+	rotate 12
+	missingok
+	notifempty
+	compress
+	delaycompress
+	create 0640 root root
+}
