@@ -12,6 +12,7 @@ Runtime monitoring utilities for the Secure Fullstack Lab.
 | `correlation-check.sh`              | Read log sources and emit alerts on abuse patterns |
 | `correlation-check.service`         | Systemd oneshot unit for the correlation check  |
 | `correlation-check.timer`           | Systemd timer that runs the check every 5 minutes |
+| `alerts-log.logrotate`              | Logrotate config for `/var/log/secure-fullstack/alerts.log` (weekly, 12 rotations) |
 
 ## The GoAccess report
 
@@ -83,6 +84,12 @@ line. The limitation is documented in the script itself.
     sudo systemctl daemon-reload
     sudo systemctl enable --now goaccess-report.timer
     sudo systemctl enable --now correlation-check.timer
+
+Install the alerts log rotation. Use `install` with mode 0644: logrotate
+ignores a config file that is writable by group or others, and the copy in
+the repository may have mode 0660.
+
+    sudo install -o root -g root -m 644 deploy/monitoring/alerts-log.logrotate /etc/logrotate.d/secure-fullstack-alerts
 
 Check the schedules:
 
