@@ -4972,8 +4972,44 @@ Work followed a list of findings from an external review of the repository. Each
 ### Open items
 
 - The deployed backend in `/opt/secure-fullstack/backend` was redeployed on 2026-10-25 (closes the last item of Session 25). After the deploy, `backend/app`, `backend/requirements.txt` and the served frontend were compared with the repository and found identical.
+  Update 2026-10-28: the VM was updated again on 2026-10-26 (Nginx configuration and `backend/app/main.py`). `requirements.txt` on the VM is still the old one, and the repository now pins `dnspython 2.9.0` (PR #80).
 - Frontend: automatic token refresh (the interceptor only logs out on 401).
 - Refresh tokens have no persistent denylist or `jti`.
 - Threat model S3 gives the secret path as `backend/.jwt_secret`; to be checked against `security.py`.
 - Threat model S4: whether `HttpOnly` cookies are still absent has not been re-checked in the frontend.
 - Remaining items from the external review (input validation of `ip_address`, systemd sandboxing, Ansible drift, Nginx headers, backups, monitoring, CI hardening, text corrections) are tracked and will be verified one by one.
+  Update 2026-10-28: the monitoring items were reviewed in Session 27 (PRs #74 to #79); notifications and some measurements remain open, as listed there. The other items are still open.
+
+## Session 27 — Audit follow-up: Nginx and docs fixes, and a review of the monitoring
+
+### What happened
+
+Work continued through the external review list, one finding at a time. Each finding was checked in the code or on the VM before it was accepted.
+
+- **Nginx, SSH and docs (PRs #68 to #73).** `sshd-hardening.conf` was aligned with the playbook and the VM (`ClientAliveCountMax 2`, `MaxSessions 2`) (#68). The six security headers are now repeated in `location /assets/`, because `add_header` in a location replaces all inherited ones (#69). `server_tokens off` in both server blocks, and the redirect uses `$server_name` (#70). `Cache-Control: no-store` on login and refresh, with 2 tests (#71); measured on a real login through Nginx on the VM, `/refresh` not measured there. Documentation: backups are on the same machine and unencrypted, the RTO is qualified, and the threat model no longer assumes LUKS, which `lsblk` showed is absent (#72); AR-01 marked mitigated, a note on AR-02, I1 and the control mapping, risk register revision 1.8 (#73). Nginx was installed on the VM identical to the repository, and the backend was redeployed with #71.
+- **`emit_alert` aborted the script (#74).** The function ended with `[ -n "${details}" ] && echo ...`, which returns 1 when `details` is empty. Under `set -euo pipefail`, the only caller with empty details (`401_BURST`) killed the `while` subshell after the first IP. Reproduced with the function in isolation (first IP only, exit 1), fixed with an explicit `if`, and installed on the VM.
+- **Window gap (#76).** The timer had the default `AccuracySec` (1 min) and runs started 301 to 327 s apart, while the lookback was a fixed 5 minutes. `AccuracySec=1s` and a 6-minute lookback were installed on the VM; the next three intervals measured 301 s each. The 5XX_BURST message, which printed "in the last 5 minutes ago", was reworded.
+- **Longer gaps.** In a 3-hour sample there were two: 8.5 min (includes a reboot) and 78 min, during which the whole journal is nearly empty, so the guest itself was not running. The cause was not determined.
+- **README (#75, #79).** The "Known limitation" paragraph said the Nginx side counts every 429 in the current log file; the script filters each line by timestamp. A dated update was added below the old text. `alerts-log.logrotate` is now listed and its install command documented.
+- **Log rotation (#77).** `alerts.log` had none. The new config was validated with `logrotate -d`, installed on the VM, and a forced rotation produced a new empty file and `alerts.log.1`, both `root:root 0640`. A write with the same `>>` pattern landed in the new file.
+- **5xx at the edge (#78).** With the API stopped, one request through Nginx returned 502 and was logged. `5XX_BURST` reads only the FastAPI journal, so a new `5XX_EDGE` alert was added, read from the Nginx log (more than 3 in the window). Checked with synthetic lines: 3 give no alert, 4 do, and `main` gives none for the same lines.
+- **`401_BURST` in production.** 24 unauthenticated requests to `/api/assets` all returned 401 (no 429) and produced one alert, `24 failed authentications from 127.0.0.1`. The FastAPI log carries the real client IP.
+- **Dependency (#80).** `pip-audit` failed in CI on `dnspython 2.8.0` (CVE-2026-114605, fixed in 2.9.0). The pin was raised; in a throwaway venv `pip check` was clean, `pip-audit` exited 0, and 59 tests and ruff passed.
+
+### Lessons
+
+- **An alert that has never fired is not a tested alert.** `alerts.log` showed no `401_BURST`, and that path had a bug that would have aborted the script the first time it ran.
+- **A scripted check can damage what it points at.** A test script used `/dev/null` as `ALERTS_LOG`; the script's `chmod 640` changed the mode of `/dev/null`. It was restored to 666. Test with a file in a temporary directory instead.
+- **Test lines need the right locale and owner.** The script's awk only knows English month names, so synthetic log lines need `LC_ALL=C`. Temporary files created by an unprivileged user and written by root failed with "Permission denied"; a directory created with `sudo mktemp -d` worked. The first synthetic attempt printed no alert and the cause was not isolated.
+- **Check the exposure, not only the advisory.** The CVE needs the application to process untrusted DNS messages. The application uses `EmailStr` only, and pydantic calls `email_validator` with `check_deliverability=False`. The bump was still made, to keep the audit gate green without ignoring it.
+- **The audit gate caught it late.** The same pin passed CI on 2026-10-27 and failed on 2026-10-28; the CVE was published on 2026-10-22. The delay in the audit database was not measured.
+- **An Nginx reload returns before the new workers take over.** Wait a few seconds before measuring.
+
+### Open items
+
+- Notifications for the correlation check remain out of scope (README).
+- Not measured: `5XX_EDGE` during a real outage, `401_BURST` through `/api/auth/login` at the rate limit, how often an event near a window boundary is counted twice (no deduplication), and the first real alert written after a rotation.
+- The Nginx side reads only the current log file, so a window that crosses the daily rotation misses lines already in `.1`.
+- The forced rotation moved the 8 alerts of 16 and 19 October to `alerts.log.1`. The logrotate output mentioned `dateext`, but the rotated file is named `.1`; not explained.
+- The VM still has the old `requirements.txt`; `dnspython 2.9.0` is not deployed there.
+- From the review list: CI hardening (ZAP authentication, `permissions`, actions pinned by SHA, self-hosted runner check), Ansible duplicating `deploy/hardening/`, text corrections, the second systemd round, frontend token refresh and a `jti` denylist, and backups encrypted with a public key (with a new RTO measurement).
