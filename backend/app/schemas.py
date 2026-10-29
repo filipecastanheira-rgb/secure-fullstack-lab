@@ -125,3 +125,14 @@ class RefreshRequest(BaseModel):
     read from the token itself; they are not re-sent by the client.
     """
     refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    """
+    Payload for POST /api/auth/logout.
+
+    The refresh token identifies the session to end. The endpoint does
+    not use an access token, because the access token may already have
+    expired when the user logs out.
+    """
+    refresh_token: str

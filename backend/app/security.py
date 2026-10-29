@@ -13,6 +13,7 @@ Keeping all cryptographic operations here means:
 
 import os
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -139,7 +140,17 @@ def create_access_token(subject: str, role: str) -> str:
     return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
 
 
-def create_refresh_token(subject: str, role: str) -> str:
+def new_token_id() -> str:
+    """Return a random identifier for a refresh token or a token family."""
+    return str(uuid.uuid4())
+
+
+def refresh_token_lifetime() -> timedelta:
+    """Return how long a refresh token stays valid."""
+    return timedelta(days=_REFRESH_TOKEN_EXPIRES_DAYS)
+
+
+def create_refresh_token(subject: str, role: str, jti: str) -> str:
     """
     Create a signed JWT refresh token.
 
@@ -151,12 +162,16 @@ def create_refresh_token(subject: str, role: str) -> str:
     verification path explicitly rejects. Without that claim, a stolen
     refresh token would work as an access token, and the two-token model
     would collapse into a single, longer-lived one.
+
+    `jti` identifies this token in the refresh_tokens table, which is what
+    allows a token to be used once and a family to be revoked.
     """
     now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "role": role,
         "type": "refresh",
+        "jti": jti,
         "iat": now,
         "exp": now + timedelta(days=_REFRESH_TOKEN_EXPIRES_DAYS),
     }

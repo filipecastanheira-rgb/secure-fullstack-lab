@@ -310,7 +310,7 @@ project.
 |--------------|--------------------------------|---------------|-------|
 | V1           | Architecture, Design, Threat Modelling | `[implemented]` | Threat model in `docs/threat-model.md` |
 | V2           | Authentication                 | `[partial]`   | Argon2id and 15-character minimum in code; login rate limiting in Nginx; no breached-password screening (see A04) |
-| V3           | Session Management             | `[partial]`   | JWT with 15-minute access and 7-day refresh tokens, algorithm fixed on encode and decode; no revocation before expiry (no `jti` or revocation list found in `security.py`) |
+| V3           | Session Management             | `[partial]`   | JWT with 15-minute access and 7-day refresh tokens, algorithm fixed on encode and decode; no revocation before expiry (no `jti` or revocation list found in `security.py`). *Update 2026-10-29:* refresh tokens have a `jti`, are rotated and revoked by family (`refresh_tokens` table, `/api/auth/logout`); access tokens are still not revocable before their 15-minute expiry |
 | V4           | Access Control                 | `[implemented]` | `get_current_user` on four endpoints and `require_admin` on user creation; ownership filter in the asset list query; tests in `backend/tests/test_asset_authorization.py` (not re-read here, see A01) |
 | V5           | Validation, Sanitization, Encoding | `[implemented]` | Pydantic on input, JSON on output |
 | V6           | Stored Cryptography            | `[partial]`   | TLS in place; CA key encryption planned |
