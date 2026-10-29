@@ -110,21 +110,11 @@
 
     - name: Write the custom Fail2Ban filter for sshd-session
       ansible.builtin.copy:
+        src: ../hardening/fail2ban-secure-sshd.conf
         dest: "{{ fail2ban_filter_file }}"
         owner: root
         group: root
         mode: "0644"
-        content: |
-          # Managed by Ansible.
-          # Custom filter for OpenSSH 9.x+, where the authentication
-          # worker process is named sshd-session.
-          [Definition]
-          failregex = ^.*Failed publickey for (invalid user )?<F-USER>.+?</F-USER> from <HOST> port \d+ ssh2(: .*)?$
-                      ^.*Failed password for (invalid user )?<F-USER>.+?</F-USER> from <HOST> port \d+ ssh2$
-                      ^.*Invalid user <F-USER>.+?</F-USER> from <HOST> port \d+$
-                      ^.*Connection closed by authenticating user <F-USER>.+?</F-USER> <HOST> port \d+ \[preauth\]$
-                      ^.*Connection closed by <HOST> port \d+ \[preauth\]$
-          ignoreregex =
       notify: Validate and restart fail2ban
 
     # =========================================================================
