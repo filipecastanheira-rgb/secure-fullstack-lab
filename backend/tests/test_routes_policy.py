@@ -27,6 +27,9 @@ PUBLIC_ROUTES = {
     ("GET", "/api/hello"),
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/refresh"),
+    # Logout is authenticated by the refresh token in the body, which
+    # the access token may no longer be valid alongside.
+    ("POST", "/api/auth/logout"),
     # OpenAPI and documentation. FastAPI serves these by default.
     # In production they would be disabled (see threat model §7.2 I2).
     ("GET", "/docs"),

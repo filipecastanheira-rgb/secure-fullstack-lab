@@ -244,6 +244,14 @@ rather than silently pending.
   reissues tokens but does not invalidate the one that was presented.
   A `jti` claim with a persistent denylist, or a token version counter
   per user, would close this. Noted since Phase 4; not yet scheduled.
+  *Update 2026-10-29:* refresh tokens now carry a `jti` and are stored
+  server-side in the `refresh_tokens` table. Each token can be used once;
+  presenting a used token revokes its whole family, and
+  `/api/auth/logout` revokes the family of the token presented. Still
+  open: access tokens are not checked against the database and stay
+  valid for up to 15 minutes, and a refresh token that is stolen and
+  never replayed by the legitimate client stays valid until its 7-day
+  expiry.
 - [x] **Statement of Applicability is complete.** Canonical format
   covering all 93 Annex A controls. See
   `docs/statement-of-applicability-v2.md`.

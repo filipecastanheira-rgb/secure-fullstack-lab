@@ -14,9 +14,10 @@ reintroduced with an explicit origin allowlist.
 """
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.orm import Session
 
 from app import models
@@ -27,6 +28,7 @@ from app.schemas import (
     AssetCreate,
     AssetRead,
     LoginRequest,
+    LogoutRequest,
     RefreshRequest,
     TokenResponse,
     UserCreate,
@@ -38,6 +40,8 @@ from app.security import (
     create_refresh_token,
     decode_token_of_type,
     hash_password,
+    new_token_id,
+    refresh_token_lifetime,
     verify_password,
 )
 
@@ -293,6 +297,77 @@ def read_current_user(
 # Authentication
 # =============================================================================
 
+def _utcnow() -> datetime:
+    """Current UTC time without tzinfo, the form SQLite returns for DateTime."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _invalid_credentials() -> HTTPException:
+    """The single generic 401 used for every token failure."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _issue_refresh_token(db: Session, user: models.User, family_id: str) -> str:
+    """Record a new refresh token in the given family and return it signed."""
+    jti = new_token_id()
+    db.add(
+        models.RefreshToken(
+            jti=jti,
+            family_id=family_id,
+            user_id=user.id,
+            expires_at=_utcnow() + refresh_token_lifetime(),
+        )
+    )
+    db.commit()
+    return create_refresh_token(subject=str(user.id), role=user.role, jti=jti)
+
+
+def _revoke_family(db: Session, family_id: str) -> None:
+    """Revoke every refresh token of a family that is not revoked yet."""
+    db.execute(
+        update(models.RefreshToken)
+        .where(
+            models.RefreshToken.family_id == family_id,
+            models.RefreshToken.revoked_at.is_(None),
+        )
+        .values(revoked_at=_utcnow())
+    )
+    db.commit()
+
+
+def _consume_refresh_token(db: Session, jti: str) -> str:
+    """
+    Mark a refresh token as used and return its family id.
+
+    The UPDATE only matches a token that is unused, not revoked and not
+    expired, so two concurrent requests with the same token cannot both
+    succeed. If the token was already used, it is being replayed: the
+    whole family is revoked. Every failure raises the same generic 401.
+    """
+    now = _utcnow()
+    result = db.execute(
+        update(models.RefreshToken)
+        .where(
+            models.RefreshToken.jti == jti,
+            models.RefreshToken.used_at.is_(None),
+            models.RefreshToken.revoked_at.is_(None),
+            models.RefreshToken.expires_at > now,
+        )
+        .values(used_at=now)
+    )
+    db.commit()
+    row = db.get(models.RefreshToken, jti)
+    if result.rowcount == 1 and row is not None:
+        return row.family_id
+    if row is not None and row.used_at is not None and row.revoked_at is None:
+        _revoke_family(db, row.family_id)
+    raise _invalid_credentials()
+
+
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
@@ -337,7 +412,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     response.headers["Cache-Control"] = "no-store"
     return TokenResponse(
         access_token=create_access_token(subject=subject, role=user.role),
-        refresh_token=create_refresh_token(subject=subject, role=user.role),
+        refresh_token=_issue_refresh_token(db, user, new_token_id()),
     )
 
 
@@ -350,22 +425,28 @@ def refresh(payload: RefreshRequest, response: Response, db: Session = Depends(g
     "refresh". An access token presented here is rejected, which prevents
     a stolen access token from extending its own lifetime.
 
-    Returns both a new access token AND a new refresh token. This is token
-    reissue, not rotation in the security sense: the endpoint is stateless
-    and does not invalidate the refresh token that was presented. The
-    previous refresh token stays valid until its own 7-day expiry, so a
-    leaked token keeps working even after the legitimate client refreshes.
+    Returns both a new access token AND a new refresh token. Refresh tokens
+    are rotated: each one can be used once. The presented token is marked
+    as used in the refresh_tokens table and the new one joins the same
+    family (all tokens issued from one login).
 
-    What does stop a leaked token: the user is re-read from the database on
-    every refresh, so deactivating the account (is_active = False) blocks
-    further refreshes, and the role comes from the database, not from the
-    old token.
+    Presenting a token that was already used is treated as theft: the whole
+    family is revoked and the user has to log in again. Revoked, expired
+    and unknown tokens are rejected with the same generic 401.
 
-    Not implemented: revocation and reuse detection. Closing this gap needs
-    a `jti` claim with a persistent denylist, or a token version counter
-    per user (see Known gaps in the README).
+    The user is also re-read from the database on every refresh, so
+    deactivating the account (is_active = False) blocks further refreshes,
+    and the role comes from the database, not from the old token.
+
+    Access tokens are not checked against the database. A stolen access
+    token stays valid until its own 15-minute expiry.
     """
     token_payload = decode_token_of_type(payload.refresh_token, "refresh")
+
+    jti = token_payload.get("jti")
+    if not isinstance(jti, str):
+        raise _invalid_credentials()
+    family_id = _consume_refresh_token(db, jti)
 
     subject = token_payload.get("sub")
     if subject is None:
@@ -397,5 +478,26 @@ def refresh(payload: RefreshRequest, response: Response, db: Session = Depends(g
     response.headers["Cache-Control"] = "no-store"
     return TokenResponse(
         access_token=create_access_token(subject=new_subject, role=user.role),
-        refresh_token=create_refresh_token(subject=new_subject, role=user.role),
+        refresh_token=_issue_refresh_token(db, user, family_id),
     )
+
+
+@app.post("/api/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
+    """
+    End a session by revoking the family of the presented refresh token.
+
+    The refresh token is the credential, so no access token is required.
+    The call is idempotent: a family that is already revoked still gives
+    204, and so does a validly signed token whose jti is not in the table
+    (there is nothing to revoke). A token that is invalid or expired gives
+    the generic 401.
+    """
+    token_payload = decode_token_of_type(payload.refresh_token, "refresh")
+    jti = token_payload.get("jti")
+    if not isinstance(jti, str):
+        raise _invalid_credentials()
+    row = db.get(models.RefreshToken, jti)
+    if row is not None:
+        _revoke_family(db, row.family_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

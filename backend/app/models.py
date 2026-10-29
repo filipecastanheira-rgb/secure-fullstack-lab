@@ -76,3 +76,28 @@ class User(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class RefreshToken(Base):
+    """
+    Server-side record of an issued refresh token.
+
+    Only the `jti` (token id) is stored, never the token itself. All
+    refresh tokens issued from one login share a `family_id`. Each token
+    can be used once: `used_at` is set when it is exchanged for a new
+    one. Presenting a token that was already used is treated as theft and
+    revokes the whole family (`revoked_at`).
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    jti: Mapped[str] = mapped_column(String(36), primary_key=True)
+    family_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
