@@ -101,29 +101,11 @@
 
     - name: Write the Fail2Ban jail configuration
       ansible.builtin.copy:
+        src: ../hardening/fail2ban-jail.local
         dest: "{{ fail2ban_jail_file }}"
         owner: root
         group: root
         mode: "0644"
-        content: |
-          # Managed by Ansible.
-          [DEFAULT]
-          bantime  = 1h
-          findtime = 10m
-          maxretry = 5
-          banaction = ufw
-          banaction_allports = ufw
-          destemail = root@localhost
-          sender    = fail2ban@localhost
-          action    = %(action_)s
-
-          [sshd]
-          enabled  = true
-          port     = 22
-          filter   = secure-sshd
-          logpath  = %(sshd_log)s
-          backend  = systemd
-          journalmatch = _SYSTEMD_UNIT=ssh.service
       notify: Validate and restart fail2ban
 
     - name: Write the custom Fail2Ban filter for sshd-session
