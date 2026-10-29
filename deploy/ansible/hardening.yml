@@ -34,34 +34,12 @@
     # =========================================================================
 
     - name: Write the SSH hardening drop-in
-      ansible.builtin.copy:
+      ansible.builtin.template:
+        src: ../hardening/sshd-hardening.conf
         dest: "{{ ssh_hardening_file }}"
         owner: root
         group: root
         mode: "0644"
-        content: |
-          # Managed by Ansible. Manual edits will be overwritten.
-          # See deploy/hardening/sshd-hardening.conf for the full
-          # rationale of each directive.
-
-          PasswordAuthentication no
-          PubkeyAuthentication yes
-          KbdInteractiveAuthentication no
-          ChallengeResponseAuthentication no
-          PermitEmptyPasswords no
-          PermitRootLogin no
-          AllowUsers {{ operator_user }}
-          LoginGraceTime 30
-          MaxAuthTries 3
-          ClientAliveInterval 300
-          ClientAliveCountMax 2
-          MaxSessions 2
-          X11Forwarding no
-          AllowTcpForwarding no
-          AllowAgentForwarding no
-          IgnoreRhosts yes
-          HostbasedAuthentication no
-          LogLevel INFO
       notify: Validate and restart ssh
 
     # =========================================================================
