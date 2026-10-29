@@ -131,29 +131,11 @@
 
     - name: Write the audit rules
       ansible.builtin.copy:
+        src: ../hardening/audit-rules.conf
         dest: "{{ audit_rules_file }}"
         owner: root
         group: root
         mode: "0640"
-        content: |
-          # Managed by Ansible.
-          # See deploy/hardening/audit-rules.conf for the full rationale.
-          -w /etc/ssh/sshd_config -p wa -k ssh_config
-          -w /etc/ssh/sshd_config.d/ -p wa -k ssh_config_d
-          -w /etc/nginx/ -p wa -k nginx_config
-          -w /etc/ufw/ -p wa -k ufw_config
-          -w /etc/fail2ban/ -p wa -k fail2ban_config
-          -w /etc/systemd/system/ -p wa -k systemd_units
-          -w /etc/passwd -p wa -k identity
-          -w /etc/shadow -p wa -k identity
-          -w /etc/sudoers -p wa -k sudoers
-          -w /etc/sudoers.d/ -p wa -k sudoers
-          -w /etc/audit/rules.d/ -p wa -k audit_config
-          -w /home/filipe/secure-fullstack-lab/backend/ -p wa -k app_backend
-          -w /opt/secure-fullstack/backend/ -p wa -k app_backend
-          -w /home/filipe/pki/ -p rwa -k pki
-          -a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=-1 -k privilege_escalation
-          -w /usr/bin/systemctl -p x -k systemctl_exec
       notify: Load audit rules
 
     # =========================================================================
