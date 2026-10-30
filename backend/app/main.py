@@ -17,11 +17,11 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
-from sqlalchemy import text, update
+from sqlalchemy import delete, text, update
 from sqlalchemy.orm import Session
 
 from app import models
-from app.database import Base, engine, get_db
+from app.database import Base, SessionLocal, engine, get_db
 from app.dependencies import get_current_user, require_admin
 from app.logging_config import RequestLoggingMiddleware, setup_logging
 from app.schemas import (
@@ -53,8 +53,13 @@ async def lifespan(app: FastAPI):
 
     We use it to create database tables. SQLAlchemy's create_all is
     idempotent: it creates only tables that do not exist yet.
+
+    It also deletes refresh token rows that have expired. This runs once
+    per start, not continuously.
     """
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        _purge_expired_refresh_tokens(db)
     yield
 
 
@@ -366,6 +371,20 @@ def _consume_refresh_token(db: Session, jti: str) -> str:
     if row is not None and row.used_at is not None and row.revoked_at is None:
         _revoke_family(db, row.family_id)
     raise _invalid_credentials()
+
+
+def _purge_expired_refresh_tokens(db: Session) -> int:
+    """
+    Delete refresh token rows whose expiry has passed and return how many.
+
+    An expired token is already rejected by its own exp claim, so its row
+    is no longer needed for reuse detection.
+    """
+    result = db.execute(
+        delete(models.RefreshToken).where(models.RefreshToken.expires_at <= _utcnow())
+    )
+    db.commit()
+    return result.rowcount
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
