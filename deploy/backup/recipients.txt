@@ -1,0 +1,3 @@
+# age public key used to encrypt the backups. It is not a secret.
+# The matching private key is /root/backup-age/backup-key.txt on the VM.
+age1f0r9jpu3fpr4ykuvv5fcluexyh38cywy8erhq5c6lr7de8phucrswgmw8y

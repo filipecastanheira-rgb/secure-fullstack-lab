@@ -54,6 +54,23 @@ intact. See `docs/JOURNAL.md` session 23 for the full test.
 database. It does not include recovering a lost machine, fetching
 backups from elsewhere or decrypting them.
 
+*Update 2026-10-30:* backups are now encrypted with age, and the
+restore starts with a decryption step:
+
+    sudo age -d -i /root/backup-age/backup-key.txt -o /var/lib/secure-fullstack/lab.db /var/backups/secure-fullstack/lab-<timestamp>.db.age
+    sudo chown secure-app:secure-app /var/lib/secure-fullstack/lab.db
+    sudo chmod 640 /var/lib/secure-fullstack/lab.db
+    sudo systemctl restart secure-fullstack-api.service
+
+Measured with `time` around these four commands: 0.698 s, with a 45 KB
+database, on the same machine, with the API unit sandboxed as of
+2026-10-30. This is not a like-for-like comparison with the 1.4 s above
+(different database size, different unit, and the `cp` is replaced by
+the decryption). Decrypting alone took 0.02 s. Afterwards the SQLite
+integrity check returned `ok` and the login endpoint returned 200. The
+private key is on the same machine, so the time to fetch a key from
+elsewhere is not part of this number.
+
 ## How the backup works
 
 - **`sqlite3 .backup`** is used for the database, not `cp`. The
@@ -81,6 +98,19 @@ backups from elsewhere or decrypting them.
   loses both.
 - Backups are not encrypted, and the JWT secret is stored next to the
   database. Protection is file permissions only.
+  *Update 2026-10-30:* the database and the JWT secret are now
+  encrypted with age (`.age` files) for the public key in
+  `deploy/backup/recipients.txt`, installed as
+  `/etc/secure-fullstack/backup-recipients.txt`. The private key is on
+  the same machine (`/root/backup-age/backup-key.txt`, root, mode 600),
+  so the encryption protects copies of the backups that leave the
+  machine, not the backups against root on it. It was kept there on
+  purpose: for a lab with one operator, a lost key would mean losing
+  every backup. There is no second recovery key. `backup.sh` stops if
+  the recipients file is missing and never writes a plaintext backup.
+  The SHA-256 files are now computed over the encrypted files.
+  Backups made before 2026-10-30 19:42 are plaintext and are removed by
+  the 7-day retention, which now covers both formats.
 - Accepted for the lab, with the rationale and the production design,
   in AR-07 (`docs/risk-register.md`).
 
@@ -89,6 +119,10 @@ backups from elsewhere or decrypting them.
 Check that a backup is intact:
 
     sudo sha256sum -c /var/backups/secure-fullstack/lab-<timestamp>.db.sha256
+
+*Update 2026-10-30:* for encrypted backups the file is
+`lab-<timestamp>.db.age.sha256`. The hash is over the encrypted file, so
+it can be checked without the private key.
 
 Check the schedule:
 
