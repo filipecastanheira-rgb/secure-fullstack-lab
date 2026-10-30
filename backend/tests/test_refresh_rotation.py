@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 
 from app import models, security
+from app.main import _purge_expired_refresh_tokens
 
 from .conftest import ADMIN_EMAIL, ADMIN_PASSWORD
 
@@ -106,3 +107,29 @@ def test_expired_record_is_rejected(client, db_session, test_admin):
     row.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)
     db_session.commit()
     assert _refresh(client, tokens["refresh_token"]).status_code == 401
+
+
+def test_purge_removes_only_expired_rows(db_session, test_admin):
+    now = datetime.now(UTC).replace(tzinfo=None)
+    db_session.add_all(
+        [
+            models.RefreshToken(
+                jti="00000000-0000-0000-0000-000000000001",
+                family_id="family-expired",
+                user_id=test_admin.id,
+                expires_at=now - timedelta(minutes=1),
+            ),
+            models.RefreshToken(
+                jti="00000000-0000-0000-0000-000000000002",
+                family_id="family-valid",
+                user_id=test_admin.id,
+                expires_at=now + timedelta(days=1),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    assert _purge_expired_refresh_tokens(db_session) == 1
+
+    remaining = db_session.query(models.RefreshToken).all()
+    assert [r.family_id for r in remaining] == ["family-valid"]
