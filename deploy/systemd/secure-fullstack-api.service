@@ -23,5 +23,23 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 UMask=0077
 
+# Second round: capabilities, sockets, namespaces, devices, /proc, syscalls.
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+PrivateDevices=true
+SystemCallArchitectures=native
+RemoveIPC=true
+ProtectProc=invisible
+ProcSubset=pid
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
 [Install]
 WantedBy=multi-user.target
