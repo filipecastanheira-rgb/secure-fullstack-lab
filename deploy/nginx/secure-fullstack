@@ -99,7 +99,16 @@ server {
     }
 
     # --- SPA fallback ---
+    # index.html is the entry point that references the content-hashed
+    # assets, so browsers must revalidate it (ETag) before reusing it.
+    # The same response is served for unknown paths through the fallback.
     location / {
+        add_header Cache-Control "no-cache";
+
+        # add_header in a location replaces ALL add_header inherited from the
+        # server block, so the shared security headers are included here again.
+        include /etc/nginx/snippets/security-headers.conf;
+
         try_files $uri $uri/ /index.html;
     }
 }
