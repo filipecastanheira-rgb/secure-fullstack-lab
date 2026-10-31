@@ -292,6 +292,9 @@ rather than silently pending.
 - [ ] **Data volume hardening** — currently `chmod 777` as a workaround for Podman rootless UID remap. Correct fix: `podman unshare chown 10001:10001` or `--userns=keep-id`
 - [x] SBOM with Syft (CycloneDX format) — `deploy/container/sbom.cdx.json`
 - [x] Image signing with cosign — `deploy/container/sbom.cdx.json.sigstore`
+  - Update 2026-10-31: the signature is over the SBOM only (Sigstore
+    bundle `deploy/container/sbom.cdx.json.sigstore`); the container image
+    itself is not signed (see `docs/control-mapping.md`).
 
 ### Phase 12 — Final polish
 
