@@ -330,6 +330,10 @@ revision history (section 7), R-08 to R-11 and AR-06 were added after 2026-10-07
 the counts, the lists of active, closed and accepted risks, and the residual projection
 below do not include them.
 
+**Update 2026-10-31.** AR-07 (2026-10-26) and AR-08 (2026-10-31) were also added after
+2026-10-07, so the snapshot does not include them either. The register now lists AR-01 to
+AR-08 in section 4.1. The snapshot is still not recalculated.
+
 ### Current state
 
 | Severity  | Active | Closed | Accepted |
@@ -603,3 +607,4 @@ to "the host and its credentials".
 | 2026-10-26 | 1.7     | Added AR-07 (backups on the same machine, unencrypted, JWT secret next to the database). |
 | 2026-10-26 | 1.8     | AR-01 mitigated (`server_tokens off`). AR-02: note on the redirect and the proxied `Host`. Original text kept. |
 | 2026-10-31 | 1.9     | Added AR-08 (`minimatch` alert #7, development dependency, no compatible release found). |
+| 2026-10-31 | 1.10    | Section 5: note that AR-07 and AR-08 are also missing from the 2026-10-07 snapshot. Original text kept. |
