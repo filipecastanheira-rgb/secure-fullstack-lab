@@ -1,6 +1,8 @@
 # ZAP rules for the CI scans. Only IGNORE entries are used.
 # In CI the scanner talks to uvicorn directly, without Nginx in front.
 # Every non-comment line must contain tabs, and blank lines are not allowed.
+# In the API scan, passing this file switches the active scan policy from
+# API-Minimal to the full Default Policy (read in the ZAP script on main).
 10021	IGNORE	X-Content-Type-Options: uvicorn alone does not send it; Nginx does (measured on the VM)
 90004	IGNORE	Cross-Origin-Resource-Policy: uvicorn alone does not send it; Nginx does (added in #103, measured on the VM)
 10049	IGNORE	Non-Storable Content: raised on uvicorn 404s and responses without Cache-Control; Nginx sends no-cache on / (#104); ZAP was never run against Nginx
