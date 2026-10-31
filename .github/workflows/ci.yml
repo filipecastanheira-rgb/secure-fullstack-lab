@@ -231,6 +231,7 @@ jobs:
           # container reaches the runner's host through the Docker bridge
           # gateway, which is 172.17.0.1 on a default installation.
           target: "http://172.17.0.1:8000"
+          rules_file_name: ".zap/rules.tsv"
           # Do not fail the pipeline on the first run. The goal is to see
           # what the scan reports, decide which findings are real, and
           # tune the rules. Once tuned, `fail_action: true` will be set.
@@ -248,6 +249,7 @@ jobs:
         with:
           target: "http://172.17.0.1:8000/openapi.json"
           format: openapi
+          rules_file_name: ".zap/rules.tsv"
           fail_action: false
           allow_issue_writing: false
           artifact_name: zap_api_scan
