@@ -2543,6 +2543,20 @@ The choice is documented in a comment in the workflow file itself, so
 that a future contributor who sees the `--fix` in `package.json` and
 wonders why the CI does not use `npm run lint` finds the answer.
 
+Update 2026-10-31: this section described the workflow as calling the
+linters directly. Until PR #107 the "Run eslint" step actually ran
+`npm run lint`, which includes `--fix`, so CI fixed problems in the
+ephemeral runner and discarded the fix. Measured at the time: without
+`--fix` the repo was clean (oxlint 0 warnings and 0 errors on 9 files,
+eslint exit 0). PR #107 added `check:lint`, which runs `oxlint .` and
+`eslint .` without `--fix`, and the workflow now runs
+`npm run check:lint`. The new scripts are named `check:lint*` and not
+`lint:check*` because the `lint:*` pattern of `npm run lint` would pick
+up any script starting with `lint:` and run the checks twice. Not
+proven: that `check:lint` fails in CI on a real error (shown only
+locally, with a `debugger` statement, which makes oxlint fail), and
+that an eslint error also fails it.
+
 ### Part 6 — Two attempts at DAST
 
 The DAST job is structurally different from the others: it needs the

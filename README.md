@@ -202,6 +202,10 @@ can be shipped as a scannable artefact — it is not the production path.
 - [x] Secrets scanning: gitleaks (full history)
 - [x] DAST: OWASP ZAP baseline against the running lab
 - [x] Six parallel jobs; total runtime ~2 minutes
+  - Update 2026-10-31: the DAST job now runs the ZAP baseline scan and
+    an authenticated ZAP API scan, with ignored alerts listed in
+    `.zap/rules.tsv` and `fail_action: true`. The CI run for the merge
+    of PR #107 measured 3m 41s in total (DAST 3m 38s).
 
 ### Phase 7 — Deliberate vulnerabilities (complete)
 
