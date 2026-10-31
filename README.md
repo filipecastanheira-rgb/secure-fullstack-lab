@@ -273,7 +273,9 @@ rather than silently pending.
 - [x] Hardening applied via playbook, score re-measured
 - [x] Before/after documented
 
-### Phase 10 — Backup and restore (complete)
+### Phase 10 — Backup and restore
+
+*Update 2026-10-31:* The backup, the restore test, the RTO/RPO and the retention are done. Two items that the risk register places in Phase 10 are not represented in this section: R-03 (passphrase on `ca.key`, key moved off the running host) and R-04 §Control (recovery) (offline copy of the repository, `[planned: phase 10]`). The heading was narrowed so that it does not claim them.
 
 - [x] Automated backup of `lab.db` and `.jwt_secret` (daily, systemd timer at 03:00)
 - [x] SHA256 integrity verification on each backup
