@@ -172,6 +172,56 @@ jobs:
           cat /tmp/uvicorn.log
           exit 1
 
+      # Authenticated scan setup. Create a throwaway admin in the CI
+      # database and log in to get a bearer token for ZAP. The password is
+      # generated for each run and masked in the logs; it is never stored
+      # in the repository.
+      - name: Create CI admin and obtain a token for ZAP
+        working-directory: backend
+        env:
+          JWT_SECRET_FILE: ${{ runner.temp }}/jwt_secret
+          DATABASE_URL: sqlite:///${{ runner.temp }}/lab.db
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import secrets
+          import sys
+          import urllib.error
+          import urllib.request
+
+          from app.database import SessionLocal
+          from app.models import User
+          from app.security import hash_password
+
+          email = "zap-ci@example.com"
+          password = secrets.token_urlsafe(24)
+          print("::add-mask::" + password)
+
+          with SessionLocal() as db:
+              db.add(User(email=email, password_hash=hash_password(password), role="admin"))
+              db.commit()
+
+          request = urllib.request.Request(
+              "http://127.0.0.1:8000/api/auth/login",
+              data=json.dumps({"email": email, "password": password}).encode(),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=10) as response:
+                  token = json.load(response)["access_token"]
+          except urllib.error.HTTPError as error:
+              print("Login failed with HTTP status", error.code)
+              sys.exit(1)
+
+          print("::add-mask::" + token)
+          with open(os.environ["GITHUB_ENV"], "a") as env_file:
+              print("ZAP_AUTH_HEADER=Authorization", file=env_file)
+              print("ZAP_AUTH_HEADER_VALUE=Bearer " + token, file=env_file)
+          print("CI admin created and token stored for ZAP")
+          PY
+
       - name: ZAP baseline scan
         uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
         with:
@@ -186,3 +236,18 @@ jobs:
           # tune the rules. Once tuned, `fail_action: true` will be set.
           fail_action: false
           allow_issue_writing: false
+
+      # Authenticated API scan. The target is the OpenAPI document served
+      # by the API; ZAP builds its requests from the paths it lists. The
+      # Authorization header comes from ZAP_AUTH_HEADER and
+      # ZAP_AUTH_HEADER_VALUE, set by the token step above. The artifact
+      # name differs from the baseline scan so the two uploads do not
+      # collide. Same first-run policy as the baseline: report only.
+      - name: ZAP API scan (authenticated)
+        uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
+        with:
+          target: "http://172.17.0.1:8000/openapi.json"
+          format: openapi
+          fail_action: false
+          allow_issue_writing: false
+          artifact_name: zap_api_scan
