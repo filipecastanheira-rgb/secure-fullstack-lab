@@ -34,6 +34,15 @@ secret are stored. The `--tmpfs` is for temporary files that the
 application may write; the rest of the filesystem is read-only by
 default because the image does not contain a writable layer.
 
+Update 2026-10-31: the statement above is wrong. The command shown does
+not use `--read-only`, so the container has a writable layer.
+`--read-only` was dropped for the test run because SQLite needs to create
+a journal file next to the database (see Session 24 in
+`docs/JOURNAL.md`), and the read-only root filesystem is listed as
+deferred in the main README. The `--tmpfs /tmp` and the `-v` mount are as
+described. Not tested: whether `--read-only` combined with the `-v` mount
+and `--tmpfs /tmp` would work.
+
 ## Scan for vulnerabilities
 
     trivy image --image-src podman localhost/secure-fullstack-api:0.3
