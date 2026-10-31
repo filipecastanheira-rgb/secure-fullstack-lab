@@ -82,6 +82,7 @@ elsewhere is not part of this number.
   integrity, not that the backup can be restored, and the hash sits in
   the same directory as the file it protects.
 - **Retention is 7 days.** Older files are removed by the script.
+- *Update 2026-10-31:* The retention logic (`find -mtime +7`) has not yet been observed deleting a file. The 24 plaintext backups (12 database, 12 JWT secret) dated 2026-10-23 to 2026-10-30 are still present because none has yet crossed the exact 7-day threshold at 03:00 (the timer schedule); they will be deleted starting 2026-11-01. This is expected behaviour, not a failure.
 - **The service runs as `root`, and the backup directory is `root:root`,
   mode `0700`.** The database is owned by `secure-app`, but the
   application user has no access to the backups: a compromise of the
