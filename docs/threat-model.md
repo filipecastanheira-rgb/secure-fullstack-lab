@@ -626,6 +626,8 @@ If the signing key is short or guessable, the attacker can compute a valid
 signature for any payload.
 *Status:* `[implemented]` — the key is 64 bytes from `secrets.token_urlsafe`, stored in `backend/.jwt_secret` (mode `0600`, gitignored).
 
+*Update 2026-11-01 (S3):* The code reads the signing key from the file named by `JWT_SECRET_FILE`, and defaults to `/var/lib/secure-fullstack/.jwt_secret` when the variable is not set (`backend/app/security.py`). The path `backend/.jwt_secret` above is the one described when this section was written. The file is created with mode `0600`. The key length stated above was not re-checked in this update.
+
 **S4. JWT theft (future).**
 If an attacker can read the token from the browser (XSS, shared device,
 log leakage), they can impersonate the user until the token expires.
@@ -1284,6 +1286,8 @@ compromised, the attacker gains access.
 site.
 *Status:* `[gap]` — enable 2FA. This is a one-time change with a
 material impact on the account.
+
+*Update 2026-11-01 (S2):* Two-factor authentication is enabled on the GitHub account (authenticator app). The description and the `[gap]` status above no longer match this state. The original text is kept as written.
 
 **S3. The SSH key used for GitHub has no passphrase.**
 Same class of risk as the SSH operator key. If the Ubuntu host is
