@@ -5026,6 +5026,7 @@ Work continued through the external review list, one finding at a time. Each fin
 - The Nginx side reads only the current log file, so a window that crosses the daily rotation misses lines already in `.1`.
 - The forced rotation moved the 8 alerts of 16 and 19 October to `alerts.log.1`. The logrotate output mentioned `dateext`, but the rotated file is named `.1`; not explained.
 - The VM still has the old `requirements.txt`; `dnspython 2.9.0` is not deployed there.
+  Update 2026-11-01: `dnspython 2.9.0` is installed in the VM virtualenv. All 21 packages in the repository `requirements.txt` are installed there with the same versions, and `pip freeze` lists no other package. The old `requirements.txt` file in `/opt/secure-fullstack/backend/` is still there (57 lines) and does not match the virtualenv.
 - From the review list: CI hardening (ZAP authentication, `permissions`, actions pinned by SHA, self-hosted runner check), Ansible duplicating `deploy/hardening/`, text corrections, the second systemd round, frontend token refresh and a `jti` denylist, and backups encrypted with a public key (with a new RTO measurement).
 
 ## Session 28 — Audit follow-up: documentation accuracy against the measured state
