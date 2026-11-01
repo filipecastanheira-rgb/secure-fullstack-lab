@@ -113,6 +113,8 @@ read. The other rows are unchanged.
 | Phase        | Prevention: Phase 12 (pre-publication polish). Backup: Phase 10. Detection and containment: documented in §R-04.1 and §R-04.2. |
 | Residual     | **Low (4)** — the repository is private, the password is strong and unique, device verification is active, and push notifications are enabled. The remaining risk is pre-publication advantage in the (unlikely) event of a full account compromise. |
 
+*Update 2026-11-01:* The repository is public. Two-factor authentication is enabled on the account (authenticator app). Classic branch protection is enabled on `main`: pull request required (no approvals required), six required status checks with "require branches to be up to date", force pushes and deletions blocked. "Require signed commits" is **not** enabled on `main`, and the repository has no rulesets. "Do not allow bypassing the above settings" is not enabled. The Description above (no 2FA, no branch protection) no longer matches this state, prevention control (2) is not in place, and the premise "the repository is private" in Impact, Severity and Residual no longer holds. Severity and Residual were not re-scored in this update.
+
 **Why this is not zero.** Zero risk does not exist in a risk register. The repository being private reduces *impact* (no supply chain until publication) but does not eliminate the *likelihood* of account compromise. A notification is a detection control, not a prevention control: the attacker has a time window between the action and the operator's response, and any data they have already cloned cannot be un-cloned. The controls reduce the exposure; they do not erase it.
 
 #### R-04.1 — Detection controls
