@@ -115,6 +115,8 @@ read. The other rows are unchanged.
 
 *Update 2026-11-01:* The repository is public. Two-factor authentication is enabled on the account (authenticator app). Classic branch protection is enabled on `main`: pull request required (no approvals required), six required status checks with "require branches to be up to date", force pushes and deletions blocked. "Require signed commits" is **not** enabled on `main`, and the repository has no rulesets. "Do not allow bypassing the above settings" is not enabled. The Description above (no 2FA, no branch protection) no longer matches this state, prevention control (2) is not in place, and the premise "the repository is private" in Impact, Severity and Residual no longer holds. Severity and Residual were not re-scored in this update.
 
+*Update 2026-11-01 (re-scoring):* With the repository public, Impact is 4, as the Impact row already anticipated for a public repository (supply chain). Likelihood stays at 2. Two-factor authentication on the account was considered; the score is not lowered because the Likelihood of 2 rests on the password, the device verification and the protection of the email account, and the effect of two-factor authentication on it was not measured. Severity is therefore **Medium (8)**, and Residual is **Medium (8)** while "Require signed commits" is not enabled on `main`, which the Impact row names as a condition for returning to 2. The Severity and Residual rows above are kept as written for the private period.
+
 **Why this is not zero.** Zero risk does not exist in a risk register. The repository being private reduces *impact* (no supply chain until publication) but does not eliminate the *likelihood* of account compromise. A notification is a detection control, not a prevention control: the attacker has a time window between the action and the operator's response, and any data they have already cloned cannot be un-cloned. The controls reduce the exposure; they do not erase it.
 
 #### R-04.1 — Detection controls
@@ -336,6 +338,8 @@ below do not include them.
 **Update 2026-10-31.** AR-07 (2026-10-26) and AR-08 (2026-10-31) were also added after
 2026-10-07, so the snapshot does not include them either. The register now lists AR-01 to
 AR-08 in section 4.1. The snapshot is still not recalculated.
+
+**Update 2026-11-01.** R-04 was re-scored after the 2026-10-07 snapshot (see the note in R-04). The R-04 line in the table and the list of active risks below reflect the earlier classification, Low, and are kept as written.
 
 ### Current state
 
@@ -611,3 +615,4 @@ to "the host and its credentials".
 | 2026-10-26 | 1.8     | AR-01 mitigated (`server_tokens off`). AR-02: note on the redirect and the proxied `Host`. Original text kept. |
 | 2026-10-31 | 1.9     | Added AR-08 (`minimatch` alert #7, development dependency, no compatible release found). |
 | 2026-10-31 | 1.10    | Section 5: note that AR-07 and AR-08 are also missing from the 2026-10-07 snapshot. Original text kept. |
+| 2026-11-01 | 1.11    | R-04 re-scored after the repository became public: Impact 4, Severity and Residual Medium (8). Section 5: note that the snapshot line for R-04 is not updated. Original text kept. |
