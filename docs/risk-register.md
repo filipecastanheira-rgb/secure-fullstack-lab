@@ -18,6 +18,8 @@ produces a finding, and updated when the treatment is implemented and
 verified. When a finding is closed, the entry is not deleted — the
 residual risk is recorded and the entry moves to §6 (Closed risks).
 
+*Update 2026-11-01.* The owner of every risk in this register, including the accepted risks and deferred best practices in section 4, is Filipe Castanheira, the sole operator of this laboratory. The register has no per-risk owner field because no other person holds a risk.
+
 The register supports the requirements of:
 
 - **ISO 27001 A.5.7, A.5.9, A.8.8** — threat intelligence, asset
@@ -619,3 +621,4 @@ to "the host and its credentials".
 | 2026-10-31 | 1.10    | Section 5: note that AR-07 and AR-08 are also missing from the 2026-10-07 snapshot. Original text kept. |
 | 2026-11-01 | 1.11    | R-04 re-scored after the repository became public: Impact 4, Severity and Residual Medium (8). Section 5: note that the snapshot line for R-04 is not updated. Original text kept. |
 | 2026-11-01 | 1.12    | R-03: note with the measured state of `ca.key` (not encrypted, on the VM). Residual re-scored from Low (4) to High (15). Original text kept. |
+| 2026-11-01 | 1.13    | Section 1: note stating that the owner of every risk is Filipe Castanheira. Original text kept. |
