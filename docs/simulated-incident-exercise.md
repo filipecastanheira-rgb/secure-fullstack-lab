@@ -162,6 +162,8 @@ would have to be noticed by someone reading logs.
 
 **This is the primary action item of this exercise** (see §7).
 
+*Update 2026-11-01:* This section describes the state on 2026-10-08, when the exercise was performed. Phase 8 later added an alert that fires when the rate limiter begins rejecting requests (systemd timer, 5-minute cadence), as recorded in the README. The text in §5.5 and §6.4 is kept as written.
+
 ---
 
 ## 6. Post-mortem
