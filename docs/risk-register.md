@@ -95,6 +95,8 @@ the risk to an acceptable level, not that it eliminates it.
 subdirectory `secure-fullstack-lab`. The listing shows metadata only; the key was not
 read. The other rows are unchanged.
 
+**Update 2026-11-01 (measured and re-scored).** On the VM, `~/pki/secure-fullstack-lab/ca.key` has mode `600`, owner `filipe`, 3272 bytes, last modified 2026-09-29, the same size, mode and owner as in the note above. Its first line is `-----BEGIN PRIVATE KEY-----` and the file contains no `ENCRYPTED` marker, so the key is not encrypted. It is in the home directory of the host that serves the application. The key was not read beyond that header. Controls (1) and (2) are therefore not applied, and the Residual row above ("the key is encrypted at rest and not present on the running host") does not match the measured state. Only this path was checked; copies elsewhere were not searched for. Residual is **High (15)**, equal to Severity, because no treatment is in place. Likelihood 3 and Impact 5 are unchanged: the effect of treating R-02 on the Likelihood was not measured. The Residual row above is kept as written, as the state planned for the treatment.
+
 
 ### R-04 — GitHub account exposure (supply chain and history tampering)
 
@@ -616,3 +618,4 @@ to "the host and its credentials".
 | 2026-10-31 | 1.9     | Added AR-08 (`minimatch` alert #7, development dependency, no compatible release found). |
 | 2026-10-31 | 1.10    | Section 5: note that AR-07 and AR-08 are also missing from the 2026-10-07 snapshot. Original text kept. |
 | 2026-11-01 | 1.11    | R-04 re-scored after the repository became public: Impact 4, Severity and Residual Medium (8). Section 5: note that the snapshot line for R-04 is not updated. Original text kept. |
+| 2026-11-01 | 1.12    | R-03: note with the measured state of `ca.key` (not encrypted, on the VM). Residual re-scored from Low (4) to High (15). Original text kept. |
