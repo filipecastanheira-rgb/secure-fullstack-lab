@@ -5027,3 +5027,43 @@ Work continued through the external review list, one finding at a time. Each fin
 - The forced rotation moved the 8 alerts of 16 and 19 October to `alerts.log.1`. The logrotate output mentioned `dateext`, but the rotated file is named `.1`; not explained.
 - The VM still has the old `requirements.txt`; `dnspython 2.9.0` is not deployed there.
 - From the review list: CI hardening (ZAP authentication, `permissions`, actions pinned by SHA, self-hosted runner check), Ansible duplicating `deploy/hardening/`, text corrections, the second systemd round, frontend token refresh and a `jti` denylist, and backups encrypted with a public key (with a new RTO measurement).
+
+## Session 28 — Audit follow-up: documentation accuracy against the measured state
+
+### What happened
+
+Work continued through points 7 and 8 of the external review list, one finding at a time. Each pull request carries only what the finding makes false: dated notes, with the old text kept. Records that were true when written were not changed.
+
+- **CI and dependencies (#85, #104 to #108).** `gitleaks-action` 3.0.0; `no-cache` on `/`; `.zap/rules.tsv` with ignored alerts and a written reason; `fail_action: true` for the ZAP scans; `lint` without `--fix`; `follow-redirects` 1.16.2. Passing `-c` to a ZAP scan changes its scope: the API scan went from 48 to 177 URLs and from about 23 s to 2m21s. Only lines with `IGNORE` in the second column count, and a non-comment line without a tab makes the whole file ignored silently.
+- **Documentation against the measured state (#109 to #115).** Notes on the DAST in the JOURNAL, README and control mapping (#109); AR-08 for `minimatch` (#110); the container README no longer says the container is read-only (#111); the Phase 11 README says cosign signs the SBOM only, not the image (#112); risk register section 5 notes that AR-07 and AR-08 are missing from the 2026-10-07 snapshot (#113); a dated note on the backup retention (#114); the Phase 10 heading no longer says "complete", because R-03 (passphrase on `ca.key`) and R-04 recovery (offline copy of the repository) are not in that section (#115).
+- **Backup retention.** `RETENTION_DAYS=7` with `find -mtime +7` is correct; it had never been exercised. On 2026-11-01 the backup directory held 10 plaintext database files and 10 plaintext secret files (30 October and earlier) and 3 + 3 encrypted ones, against 12 + 12 plaintext on 30 October. Two of each are gone; which ones was not checked.
+- **R-04, state of the GitHub account (#116).** Read in the GitHub settings on 2026-11-01: the repository is public (it was private during development and was made public when the work was finished, and corrections went on for about three weeks); two-factor authentication is on (authenticator app); classic branch protection on `main` requires a pull request without approvals, six status checks with "up to date", and blocks force pushes and deletions; "Require signed commits" is off; there are no rulesets; "Do not allow bypassing" is off. The R-04 Description ("no 2FA, no branch protection") no longer matches, and the premise "the repository is private" in Impact, Severity and Residual no longer holds. The note does not re-score.
+- **Simulated incident exercise (#117).** Section 5.5 and 6.4 describe the state on 2026-10-08 in the present tense. A dated note says that Phase 8 later added an alert for rate limiter rejections (README). The other action items were not marked as closed.
+- **Threat model (#118).** S3 (JWT key): the code reads the key from `JWT_SECRET_FILE` and defaults to `/var/lib/secure-fullstack/.jwt_secret`; `backend/.jwt_secret` was the path when the text was written. S2 (GitHub): two-factor authentication is on. S4: the text is still true, the frontend keeps both tokens in `localStorage` and no `Set-Cookie` exists in the backend. The GitHub S3 gap (SSH key without passphrase) was confirmed on the VM and needs no note.
+- **AR-09 (#119).** There was no accepted risk for access tokens that cannot be revoked before their 15 minutes end; the limitation was described in the README, the control mapping (V3) and threat model S4, but not recorded as a decision. AR-09 gives the rationale (a lookup on every request removes the benefit of stateless tokens), the compensating control (rotation and revocation by family for refresh tokens) and two review conditions. The owner of every risk is the single maintainer.
+- **AR-07 (#120).** Backups since 2026-10-30 19:42 (database and JWT secret) are encrypted with age; earlier ones are plaintext until the retention removes them. The private key is on the same machine, so the residual risk is unchanged.
+- **Not changed, by decision.** The README line "1 of 3 vulnerabilities detected by CI" stays: `docs/vuln-exercise-cors.md` records the ZAP baseline as not detecting any of the three. The authenticated API scan was not measured against the vulnerable versions.
+- **Earlier in the session.** The git history was closed without rewriting it (263 commits, only the noreply address, no keys or `.env` versioned, the only regex hit is `conftest.py`). Nginx: the snippet must be installed before the site, and any `location` with its own `add_header` must include it. Ansible (#91 to #95): four playbook files come from `deploy/hardening/`; the handler "Reload systemd and restart api" never ran for real; Ansible does not install `backup.sh`, the backup units, `age` or the recipients file, so on a new system `backup.sh` would fail with "Recipients file not readable". Refresh token rotation was tested with a restart without `daemon-reload`: the old unit definition stayed in use.
+- **Main runs.** Each merge was followed by a check of the `main` run through the public API. The DAST job took between 3m26s and 3m57s.
+
+### Lessons
+
+- **A summary of a text is not the text.** R-04 was described as saying that two-factor authentication and signed commits were on. The real Residual says nothing of the kind; the false statements were in the Description and in the status of the prevention controls. The assert was written only after reading the lines.
+- **A branch marked as deleted can still exist.** After #116 the branch was still on GitHub. `git ls-remote --heads origin <branch>` before `git fetch --prune` shows the real state.
+- **Look at the right level.** Filtering the jobs API output with `head` cut the list after two jobs. Matching only the job-level fields (six-space indentation) shows all of them.
+- **Do not call a run green while one job has no conclusion.** Five of six jobs finished and the DAST was still running three times; the answer was to wait for the DAST window.
+- **Measure what a historical result measured.** "1 of 3" was about the ZAP baseline. Saying anything about the authenticated scan needs its own measurement.
+- **Check what a text claims about a feature before writing a new risk.** The notes said an accepted risk for the access token already existed; the register had none.
+- **Re-read a log before quoting it,** and confirm job state with `started_at` and `completed_at` before saying a job is stuck.
+
+### Open items
+
+- R-04: Severity and Residual are not re-scored now that the repository is public.
+- R-03: a possible contradiction between the Description (`-nodes`) and the Residual ("encrypted at rest") was noted but its text was not re-read after the R-04 summary proved inaccurate; `ca.key` was not checked on the VM.
+- `backend/app/security.py` line 83 still says `backend/.jwt_secret` (code change, needs ruff and tests). The key length (64 bytes) was not re-checked.
+- The risk register does not state that the maintainer owns every risk.
+- Dependabot alert #6 is no longer open; whether it is Fixed or Dismissed was not checked. Alert #7 (`minimatch`) stays open as AR-08.
+- Plaintext backups remain on disk until the retention removes them. The age private key is on the same machine as the backups.
+- ZAP: `ghcr.io/zaproxy/zaproxy:stable` is not pinned; it never ran against Nginx; that `fail_action: true` fails on a new alert was never proved.
+- From earlier sessions: `/opt/secure-fullstack/backend/requirements.txt` on the VM is outdated; `--start-at-task "Write the Fail2Ban jail configuration"` ran no task and the cause is unexplained; `/etc/nginx/sites-available/secure-fullstack.bak` was not deleted; the SBOM `sbom.cdx.json` is outdated.
+- Point 8: full verification of the repository (per code pull request: test suite, VM diff against the repository, `nginx -t`, headers measured with `curl`, `systemd-analyze security`).
