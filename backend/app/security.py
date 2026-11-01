@@ -80,8 +80,10 @@ DUMMY_PASSWORD_HASH = hash_password("throwaway-password-for-timing-equalisation"
 
 # The JWT secret must persist across restarts (otherwise every restart
 # invalidates every token) and must never be committed to the repository.
-# It is generated on first run and stored in `backend/.jwt_secret`, which
-# is gitignored. In a production deployment, this would come from an
+# It is generated on first run and stored in the file named by the
+# `JWT_SECRET_FILE` environment variable, which defaults to
+# `/var/lib/secure-fullstack/.jwt_secret` (outside the repository). In a
+# production deployment, this would come from an
 # environment variable injected by the deployment system.
 _JWT_SECRET_FILE = Path(
     os.environ.get("JWT_SECRET_FILE", "/var/lib/secure-fullstack/.jwt_secret")
