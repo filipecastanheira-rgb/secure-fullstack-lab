@@ -234,9 +234,18 @@ rather than silently pending.
 - [x] **Frontend authentication.** Login form, auth service and logout
   on 401 are implemented, and the asset table loads after login
   (Session 25).
-- [ ] **No automatic token refresh in the frontend.** The request
+- [x] **No automatic token refresh in the frontend.** The request
   interceptor logs the user out on 401 instead of using the refresh
   token.
+  *Update 2026-11-01:* the response interceptor in
+  `frontend/src/services/auth.js` now handles a 401 by requesting a new
+  token pair from `/api/auth/refresh` and repeating the original request
+  once. Refreshes are serialised across tabs with `navigator.locks` where
+  that API is available. If the refresh fails, or the repeated request
+  returns 401 again, both tokens are cleared and the user is sent back to
+  the login page, so logout on 401 now only happens after a failed
+  refresh. Read from the code; not yet exercised in a browser. Both
+  tokens are kept in `localStorage`.
 - [ ] **Login endpoint logs user_id: null on success.** The structured
   logging middleware reads `request.state.user_id`, which is only set by
   `get_current_user`. The login endpoint does not use that dependency
