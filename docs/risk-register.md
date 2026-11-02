@@ -4,6 +4,7 @@
 **Version:** 1.4
 **Last updated:** 2026-10-22
 **Update 2026-11-02:** the Version and Last updated values above were not updated after 1.4. The current version is 1.14; see the revision history. Original values kept.
+**Update 2026-11-02 (second note):** the current version is 1.15; see the revision history.
 **Inputs:** `docs/threat-model.md` (STRIDE analysis, findings #1–#6)
 
 ---
@@ -624,3 +625,4 @@ to "the host and its credentials".
 | 2026-11-01 | 1.12    | R-03: note with the measured state of `ca.key` (not encrypted, on the VM). Residual re-scored from Low (4) to High (15). Original text kept. |
 | 2026-11-01 | 1.13    | Section 1: note stating that the owner of every risk is Filipe Castanheira. Original text kept. |
 | 2026-11-02 | 1.14    | Header: note that Version and Last updated were not updated after 1.4. Original values kept. |
+| 2026-11-02 | 1.15    | Revision history: three changes made on 2026-11-01 had no entry here: a dated state note on R-04, the addition of AR-09 (non-revocable access tokens), and a dated encryption note on AR-07. Entries are not renumbered. Original text kept. |
