@@ -353,6 +353,12 @@ cross here. Controls at this boundary:
 - TLS 1.2/1.3 with our CA                                 `[implemented]`
 - Security headers (HSTS, CSP, X-Frame-Options, …)        `[implemented]`
 - Rate limiting on application endpoints                  `[gap]`
+  *Update 2026-11-02:* Nginx now limits requests per client address in
+  `deploy/nginx/secure-fullstack`: `/api/auth/login` at 5 requests per
+  minute (burst 3) and `/api/` at 60 per minute (burst 20), answering
+  429. The limit is at the edge; no limiter was found in `backend/`.
+  Configured, not measured: no 429 was provoked in this review and no
+  test in `backend/tests/` covers it.
 - WAF rules                                               `[gap]` — deliberately
   out of scope; the lab is not Internet-facing
 
@@ -569,6 +575,10 @@ An attacker can send thousands of requests per second. Nginx will hold
 longer than FastAPI, but the backend will eventually saturate.
 *Status:* `[gap]` — `limit_req_zone` and `limit_conn_zone` are the Nginx
 directives. Planned for Phase 4 / 6.
+*Update 2026-11-02:* `limit_req_zone` is now in use (zones `login` and
+`api` in `deploy/nginx/secure-fullstack`; 5 and 60 requests per minute,
+429 on excess). No `limit_conn_zone` was found in `deploy/`. Request
+rate limiting is configured but was not measured in this review.
 
 **D2. Slowloris.**
 Slow-header clients occupy connection slots.
@@ -710,6 +720,11 @@ Any client can issue unlimited requests. A simple loop saturates the
 backend within seconds.
 *Status:* `[gap]` — `limit_req_zone` in Nginx and per-endpoint limits for
 authentication. Planned for Phase 4.
+*Update 2026-11-02:* requests that go through Nginx are rate limited:
+`/api/auth/login` at 5 per minute (burst 3) and the rest of `/api/` at
+60 per minute (burst 20), answering 429. No limiter was found in
+`backend/`, so the limits do not apply if Nginx is bypassed. Configured,
+not measured in this review.
 
 **D2. Unbounded collection endpoints.**
 `GET /api/assets` returns the whole table. With a very large table, both
@@ -734,6 +749,11 @@ verify ownership, not just existence.
 *Scenario:* user A requests `/api/assets/42`, which belongs to user B. If
 the endpoint only filters by ID, user A reads user B's data.
 *Status:* `[partial: phase 7]` — authentication exists; the IDOR test will be introduced in Phase 7 to demonstrate detection and fix.
+*Update 2026-11-02:* the asset list filters on `owner_id` and the
+single-asset query filters on both `id` and `owner_id`
+(`backend/app/main.py`). `backend/tests/test_asset_authorization.py`
+contains a cross-user regression test. Implemented and covered by a
+test; the test was not run in this review.
 
 **E3. Mass assignment on update (future).**
 A permissive update schema could allow a user to set fields they should
