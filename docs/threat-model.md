@@ -133,6 +133,15 @@ The gap list (§10) is the input to the risk register.
     │ Structured logs (JSON) in FastAPI                [planned]    │
     └──────────────────────────────────────────────────────────────┘
 
+**Update 2026-11-02.** In the diagram above, the `rate limiting
+[implemented]` label appears inside the FastAPI box, but the limits
+are configured in Nginx (`deploy/nginx/secure-fullstack`: zone
+`login` at 5r/m, burst 3, on `/api/auth/login`; zone `api` at 60r/m,
+burst 20, on `/api/`; both answer 429). There is no rate limiter in
+`backend/`, so these limits do not apply if Nginx is bypassed (see
+B2). Configured, not measured: no 429 was provoked in this review
+and no test in `backend/tests/` covers it.
+
 ### 2.2 Components
 
 | Component    | Role                                    | Trust level  |
