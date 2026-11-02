@@ -298,6 +298,13 @@ The value of the exercise is exactly this: a control that works silently
 is half a control. The system now knows what to build next, and has the
 evidence to justify it.
 
+**Update 2026-11-02.** This conclusion, and sections 6.8 to 6.10,
+describe the state on 2026-10-08, when the exercise was performed.
+"Detection does not yet work" no longer describes the present: Phase 8
+later added an alert that fires when the rate limiter begins rejecting
+requests (see the update in section 5.5). Not re-measured in this
+review. The text above is kept as written.
+
 ---
 
 ## 8. References
@@ -317,3 +324,4 @@ evidence to justify it.
 | Date       | Version | Change                                  | Author |
 |------------|---------|-----------------------------------------|--------|
 | 2026-10-08 | 1.0     | Initial exercise. Brute-force on login endpoint. Primary finding: no automated detection. | Filipe Castanheira |
+| 2026-11-02 | 1.1     | Dated notes added in section 5.5 (2026-11-01) and section 7 (2026-11-02): the state on 2026-10-08 is distinguished from the alert added in Phase 8. Original text kept. | Filipe Castanheira |
