@@ -3,6 +3,7 @@
 **Owner:** Filipe Castanheira
 **Version:** 1.4
 **Last updated:** 2026-10-22
+**Update 2026-11-02:** the Version and Last updated values above were not updated after 1.4. The current version is 1.14; see the revision history. Original values kept.
 **Inputs:** `docs/threat-model.md` (STRIDE analysis, findings #1–#6)
 
 ---
@@ -622,3 +623,4 @@ to "the host and its credentials".
 | 2026-11-01 | 1.11    | R-04 re-scored after the repository became public: Impact 4, Severity and Residual Medium (8). Section 5: note that the snapshot line for R-04 is not updated. Original text kept. |
 | 2026-11-01 | 1.12    | R-03: note with the measured state of `ca.key` (not encrypted, on the VM). Residual re-scored from Low (4) to High (15). Original text kept. |
 | 2026-11-01 | 1.13    | Section 1: note stating that the owner of every risk is Filipe Castanheira. Original text kept. |
+| 2026-11-02 | 1.14    | Header: note that Version and Last updated were not updated after 1.4. Original values kept. |
