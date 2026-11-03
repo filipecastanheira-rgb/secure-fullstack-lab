@@ -237,7 +237,7 @@ rather than silently pending.
 - [x] **No automatic token refresh in the frontend.** The request
   interceptor logs the user out on 401 instead of using the refresh
   token.
-  *Update 2026-11-01:* the response interceptor in
+  *Update 2026-11-02:* the response interceptor in
   `frontend/src/services/auth.js` now handles a 401 by requesting a new
   token pair from `/api/auth/refresh` and repeating the original request
   once. Refreshes are serialised across tabs with `navigator.locks` where
