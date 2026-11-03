@@ -5118,3 +5118,38 @@ Work continued through the external review list, one finding at a time. Each pul
 - Plaintext backups remain on disk until the retention removes them. The age private key is on the same machine as the backups. Ansible does not install `backup.sh`, the backup units, `age` or the recipients file.
 - `/opt/secure-fullstack/backend/requirements.txt` on the VM is outdated, `/etc/nginx/sites-available/secure-fullstack.bak` was not deleted, and the SBOM `sbom.cdx.json` is outdated.
 - The SSH key of the maintainer has no passphrase (gap, no note yet).
+
+## Session 30 — Measurements on the VM and closing checks
+
+### What was measured
+
+All requests below came from a shell on the VM, not from an attack. Dates are 2026-11-03, VM time (UTC+0).
+
+- **Login, 401 path.** One `POST /api/auth/login` with fake credentials and an email address accepted by the validator returned 401 with `{"detail":"Invalid email or password."}`, a `www-authenticate: Bearer` header and the security headers. Not measured: an existing account with a wrong password. The cause of the 422 responses in Session 29 is not proved.
+- **Nginx zone `api` (60r/m, burst 20).** 30 unauthenticated requests to `GET /api/assets` returned 22 times 401 and then 8 times 429. The configuration predicts 21 responses (1 plus the burst of 20); the extra one is not explained.
+- **Security headers.** The seven headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP, Cross-Origin-Resource-Policy) were present on a 200 for `/`, on a 200 for a JavaScript file under `/assets/`, on 401 responses and on a 429 response. Only these routes were tested. The 429 body is the default Nginx HTML page, not JSON.
+- **`correlation-check`.** The run at 23:10:03 wrote `[401_BURST] 23 failed authentications` to the journal and to `alerts.log`. The number is consistent with the 22 plus 1 responses with status 401 returned by the test requests; the access log was not counted. No `[429_BURST]` was written after 8 responses with status 429 in the loop and one more single request; the count of 429 responses was not read from the access log.
+- **Log rotation.** `/etc/logrotate.d/secure-fullstack-alerts` is installed and equal to `deploy/monitoring/alerts-log.logrotate` (`diff` exit code 0). `logrotate -d` parsed it as weekly with 12 rotations and found no rotation due (last rotated 2026-11-01). A real rotation was not observed and the mode of the new file was not checked.
+- **`ansible-playbook --start-at-task`.** With `ansible-core 2.20.1`, no user-level or system-wide configuration file and no `ANSIBLE_*` variables, the option runs no task and prints an empty recap without an error. It does the same for a minimal two-task playbook outside the repository, which runs both tasks without the option. In `hardening.yml` the task name exists, `--list-tasks` shows it, and the play has a single `hosts: localhost` with no `block`, `include`, `tags` or `check_mode`. Not proved: whether this is a defect of this version; no other version was tested. Separately, without `-K` the play fails at `Gathering Facts` because `sudo` needs a password.
+
+### Closed from Session 29
+
+- Security headers on 200 and 429 responses: measured on the routes above.
+- Login 401 path: measured with fake credentials; an existing account with a wrong password was not measured.
+- Zone `api`: a 429 was provoked and measured.
+- Dependabot rechecked: only alert #7 (`minimatch`, Moderate, development, transitive, AR-08) is open. The six closed alerts are all listed as Fixed, including #6 (`follow-redirects`). What the one active auto-triage rule does is still unknown.
+- The pull request of Session 29 (#134) was merged as 2618918. The run of `main` (run 41735197758) has six jobs in success, DAST 3m34s.
+
+### Lessons
+
+- **An empty recap is not a success.** `--start-at-task` printed a play header and no error while running nothing; only a control run without the option showed that the test was valid.
+- **`$?` after a pipeline is the exit code of its last command.** `grep ... | tail; echo $?` printed 0 although `grep` matched nothing; the output, not the code, was the evidence.
+- **A prediction from the configuration is not a measurement.** The burst of the zone `api` predicted 21 responses and gave 22.
+
+### Open items
+
+- Login with an existing account and a wrong password was not measured; the cause of the 422 responses in Session 29 is not proved.
+- `--start-at-task` with `ansible-core 2.20.1`: cause not proved; no other version was tested.
+- The first real rotation of `alerts.log` was not observed.
+- The extra response in the zone `api` (22 instead of 21) is not explained.
+- The other open items of Session 29 are unchanged.
