@@ -5068,3 +5068,53 @@ Work continued through points 7 and 8 of the external review list, one finding a
 - ZAP: `ghcr.io/zaproxy/zaproxy:stable` is not pinned; it never ran against Nginx; that `fail_action: true` fails on a new alert was never proved.
 - From earlier sessions: `/opt/secure-fullstack/backend/requirements.txt` on the VM is outdated; `--start-at-task "Write the Fail2Ban jail configuration"` ran no task and the cause is unexplained; `/etc/nginx/sites-available/secure-fullstack.bak` was not deleted; the SBOM `sbom.cdx.json` is outdated.
 - Point 8: full verification of the repository (per code pull request: test suite, VM diff against the repository, `nginx -t`, headers measured with `curl`, `systemd-analyze security`).
+
+## Session 29 — Audit follow-up: remaining documentation notes and measurements on the VM
+
+### What happened
+
+Work continued through the external review list, one finding at a time. Each pull request carries only what the finding makes false: dated notes, with the old text kept.
+
+- **Pull requests #121 to #127.** Session 28 added to the journal and trimmed by two lines (#121, #122); the JWT secret path fixed in a comment in `backend/app/security.py` (#123); a dated note on `dnspython` in the VM virtualenv (#124); R-04 re-scored after the repository became public, Impact 4, Severity and Residual Medium (8) (#125); R-03 with the measured state of `ca.key` (not encrypted, on the VM) and Residual re-scored from Low (4) to High (15) (#126); a statement that the owner of every risk is the maintainer (#127).
+- **README, token refresh (#128).** The item "No automatic token refresh in the frontend" is marked done with a dated note, read from `frontend/src/services/auth.js` without running it in a browser. The note was dated 2026-11-01 although the commit is from 2026-11-02; the date is corrected in this session's pull request.
+- **Threat model (#129, #130).** Four dated notes on rate limiting (the Internet/Nginx boundary list, D1 of Nginx, D1 of the API) and on IDOR (E2). `deploy/nginx/secure-fullstack` has zone `login` at 5r/m, burst 3, on `/api/auth/login`, and zone `api` at 60r/m, burst 20, on `/api/`, both answering 429; there is no `limit_conn_zone` and no limiter in `backend/`. `backend/app/main.py` filters the asset list by `owner_id` and the detail by `id` and `owner_id`, and `backend/tests/test_asset_authorization.py` has a cross-access regression test, not run in that review. The architecture diagram labelled `rate limiting [implemented]` inside the FastAPI box; a dated note below it says the limits are in Nginx (#130). The diagram was not edited.
+- **Risk register (#131, #132).** The header still said Version 1.4 and Last updated 2026-10-22 while the history reached 1.13: a dated note and entry 1.14. Three changes of 2026-11-01 had no history entry (the R-04 state note, the addition of AR-09, the AR-07 encryption note): entry 1.15 and a second header note. Entries were not renumbered.
+- **Simulated incident exercise (#133).** The conclusion (section 7) said that detection does not yet work and that Phase 8 will address it. A dated note says that this describes the state on 2026-10-08 and refers to the update in section 5.5. Entry 1.1 in the review history also records the 2026-11-01 note.
+- **Not changed, by decision.** Threat model B2, "any future rate limiting at the edge": the sentence is still true, only the word "future" is old. E2 "(future)" in the title: the body is conditional and has a dated note. Risk register section 5, "the two that remain are R-03 and R-04": true on the 2026-10-07 snapshot, which has dated notes saying it was not recalculated. `docs/control-mapping.md` line 492, "No 2FA or signed commits on GitHub": a historical table marked as such, reassessed on 2026-10-24 in line 513 ("Partly closed"). README Cosign line 134 is ambiguous, not false, and the note of 2026-10-31 already says the image is not signed. `chmod 777` of the data volume is already an open item in the README.
+- **Measured on the VM on 2026-11-02.** The installed Nginx site file is equal to the repository file, and `nginx -T` shows the two zones, `limit_req_status 429`, and no `limit_conn`. From a shell on the VM, against Nginx on 443, 8 requests to `/api/auth/login` gave 4 times 422 then 4 times 429; 16 requests gave 4 times 422 then 12 times 429. The access log has the 429 lines and the error log has `limiting requests ... by zone "login"` for each. The `correlation-check` run after the second test wrote `[429_BURST] 12 requests were rate-limited at the Nginx edge` to `alerts.log` and to the journal; the run after the first test (4 responses) wrote nothing, as `THRESHOLD_429=10` and the test is `-gt`. The installed script is equal to the repository script and `LOOKBACK` is 6 minutes. These requests come from this test, not from an attack.
+- **Also measured.** The frontend served from `/var/www/secure-fullstack` is equal to `frontend/dist` (`diff -rq`), and the served bundle contains `auth/refresh`. The installed Fail2Ban `jail.local` and `secure-sshd` filter match the repository apart from comments and the "Managed by Ansible" header; the jail is `sshd` with `bantime` 1h, `findtime` 10m, `maxretry` 5, backend systemd, banaction ufw. `GET /api/assets` without a token gave 401 with `www-authenticate: Bearer` and the security headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP, Cross-Origin-Resource-Policy); a HEAD request gave 405. The four installed service units are equal to the repository. `systemd-analyze security`: `secure-fullstack-api` 1.2, `correlation-check` 3.1, `goaccess-report` 3.1, `backup` 3.1.
+- **Cleanup on the VM.** Three backup copies of the `correlation-check` script and one of its timer were deleted after diffs showed that they held only earlier versions (`LOOKBACK` of 5 minutes, no `5XX_EDGE` block, an older `Documentation=` line).
+- **Main runs.** Each merge was followed by a check of the `main` run through the public API. The DAST job took between 3m14s and 3m45s.
+
+### Closed from Session 28
+
+- R-04 re-scored (history 1.11) and R-03 re-scored with the measured state of `ca.key` (history 1.12).
+- The register states that the maintainer owns every risk (history 1.13).
+- The JWT secret path comment in `backend/app/security.py` was fixed (#123). The key length (64 bytes) was not re-checked.
+- Point 8 was done within the scope above: items listed in Open items were not measured.
+
+### Lessons
+
+- **A false "absent" can be a failed command.** `2>/dev/null` hid the error, the `pip` script failed and `python -m pip` worked. When the result is that everything fails, the problem is the command.
+- **A prediction from the configuration is not a measurement.** The expected result was 401 for the first four login requests; it was 422, so the credentials path was not measured. The 429 was.
+- **A silent alert can be correct.** Four 429 responses stayed below a threshold of 10; the script, not a guess, explained it.
+- **A summary can be right while a field is false.** For R-03 the summary was right and the Residual was false against the measured state.
+- **The threat model contradicted itself.** The diagram said `rate limiting [implemented]` while D1 said gap; the cause was text from earlier phases that was never reviewed. The README also had an outdated claim about the frontend refresh.
+- **`diff` without `sudo` is not a result.** It failed on `backup.timer` (mode 640) and counts as neither equal nor different.
+- **Old paths survive in copies.** The VM units had `Documentation=file:///home/...` from before commit 77773ed, and the `security.py` comment was old.
+- **Branches that already exist, and pushes that do nothing.** Two branches already existed (`docs/journal-session-28`, `fix/jwt-secret-path-comment`); `git push` printed "Everything up-to-date" on `docs/journal-session-28-trim`; "Delete branch" of #116 was not effective the first time.
+- **Escapes inside a quoted heredoc are not interpreted.** A newline written with a double backslash was saved as a backslash and the letter n, joining two lines. Build line breaks in the script with `chr(10)` and check the result with `grep` before committing.
+- **`git grep` fills the output with hashes** unless `deploy/container/sbom.cdx.json` is excluded with the pathspec `':!deploy/container/sbom.cdx.json'`.
+- **A second external analysis found 4 items; only 2 were really false statements.** The rule that a pull request carries only what the finding makes false kept the other 2 out.
+
+### Open items
+
+- Nginx zone `api` (60r/m, burst 20): no 429 provoked. The login 401 path was not measured (the requests gave 422). Security headers were not checked on 200 or 429 responses.
+- Fail2Ban: no ban was ever provoked; `--start-at-task "Write the Fail2Ban jail configuration"` ran no task and the cause is unexplained.
+- Frontend: `auth.js` never ran in a browser; the served build was not compared with `frontend/src`.
+- `correlation-check` has no notifications.
+- Dependabot alert #6 is no longer open; whether it is Fixed or Dismissed was not checked. Alert #7 (`minimatch`) stays open as AR-08. Repository settings: "Malware alerts" is off and "Dependabot auto-triage rules" has one active rule that was not read.
+- ZAP: `ghcr.io/zaproxy/zaproxy:stable` is not pinned; it runs against the API, not Nginx; that `fail_action: true` fails on a new alert was never proved.
+- Plaintext backups remain on disk until the retention removes them. The age private key is on the same machine as the backups. Ansible does not install `backup.sh`, the backup units, `age` or the recipients file.
+- `/opt/secure-fullstack/backend/requirements.txt` on the VM is outdated, `/etc/nginx/sites-available/secure-fullstack.bak` was not deleted, and the SBOM `sbom.cdx.json` is outdated.
+- The SSH key of the maintainer has no passphrase (gap, no note yet).
