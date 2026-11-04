@@ -101,6 +101,8 @@ read. The other rows are unchanged.
 
 **Update 2026-11-01 (measured and re-scored).** On the VM, `~/pki/secure-fullstack-lab/ca.key` has mode `600`, owner `filipe`, 3272 bytes, last modified 2026-09-29, the same size, mode and owner as in the note above. Its first line is `-----BEGIN PRIVATE KEY-----` and the file contains no `ENCRYPTED` marker, so the key is not encrypted. It is in the home directory of the host that serves the application. The key was not read beyond that header. Controls (1) and (2) are therefore not applied, and the Residual row above ("the key is encrypted at rest and not present on the running host") does not match the measured state. Only this path was checked; copies elsewhere were not searched for. Residual is **High (15)**, equal to Severity, because no treatment is in place. Likelihood 3 and Impact 5 are unchanged: the effect of treating R-02 on the Likelihood was not measured. The Residual row above is kept as written, as the state planned for the treatment.
 
+**Update 2026-11-04 (risk accepted).** The Treatment is changed from Mitigate to **Accept**. Controls (1) to (3) above are not applied and no date is set to apply them. Reason: the lab is not Internet-facing (see AR-01) and has a short operational lifetime (see AR-03). The Residual stays **High (15)**, equal to the Severity; accepting the risk does not reduce it. Re-evaluate if the lab is exposed to the Internet, or if any system outside the lab is made to trust this CA. The Treatment and Residual rows above are kept as written.
+
 
 ### R-04 — GitHub account exposure (supply chain and history tampering)
 
@@ -626,3 +628,4 @@ to "the host and its credentials".
 | 2026-11-01 | 1.13    | Section 1: note stating that the owner of every risk is Filipe Castanheira. Original text kept. |
 | 2026-11-02 | 1.14    | Header: note that Version and Last updated were not updated after 1.4. Original values kept. |
 | 2026-11-02 | 1.15    | Revision history: three changes made on 2026-11-01 had no entry here: a dated state note on R-04, the addition of AR-09 (non-revocable access tokens), and a dated encryption note on AR-07. Entries are not renumbered. Original text kept. |
+| 2026-11-04 | 1.16    | R-03: Treatment changed from Mitigate to Accept (risk retained), with a dated note giving the reason and the condition for re-evaluation. Residual stays High (15). Original text kept. |
