@@ -108,6 +108,7 @@ The lab runs on **isolated virtual networks inside VMware**:
 
 - **Ubuntu VM** at `<UBUNTU_IP>` — hosts the application, Nginx, database.
 - **Kali VM** at `<KALI_IP>` — client, browser, security testing. Addresses in this repository are placeholders; the real ones are intentionally not published.
+  *Update 2026-11-04:* the last statement is not accurate. The lab's private addresses are in `deploy/nginx/secure-fullstack`, `deploy/hardening/ufw-rules.txt`, `deploy/ansible/hardening.yml`, `backend/tests/test_asset_ip_validation.py` and `docs/JOURNAL.md`. They are documented intentionally; see the Security section.
 - Traffic between VMs stays on dedicated lab segments behind a virtual
   firewall/router. The lab is **not exposed to the Internet** and is **not
   a 24/7 service** — it runs when working on it.
