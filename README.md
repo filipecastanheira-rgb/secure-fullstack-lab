@@ -133,6 +133,15 @@ can be shipped as a scannable artefact — it is not the production path.
 - **Scan:** `trivy image --image-src podman localhost/secure-fullstack-api:0.3`
   (0 Python CVEs; 166 OS CVEs inherited from base, tracked as upstream)
 - **SBOM (Syft) and signing (cosign):** signed and committed (`sbom.cdx.json.sigstore`)
+  *Update 2026-11-04:* the SBOM and its signature describe image `0.3`
+  as created on 2026-10-18 (the creation date Podman reports for the
+  local image; the SBOM was generated the same day). The runtime and
+  development requirements were split on 2026-10-26 (commit `61d6e45`)
+  and the Containerfile installs only `requirements.txt`, so a rebuilt
+  image would differ from the one described. The SBOM lists bandit,
+  pip-audit, pytest and ruff. The image was not rebuilt and the SBOM
+  was not regenerated or signed again after that change. Status in
+  `docs/control-mapping.md`.
 
 ## Documentation
 
