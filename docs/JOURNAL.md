@@ -5153,3 +5153,40 @@ All requests below came from a shell on the VM, not from an attack. Dates are 20
 - The first real rotation of `alerts.log` was not observed.
 - The extra response in the zone `api` (22 instead of 21) is not explained.
 - The other open items of Session 29 are unchanged.
+
+## Session 31 — External analyses of `main` and the decision on R-03
+
+### What was checked
+
+Dates are 2026-11-04. Two external analyses of the repository were triaged against the rule that a pull request carries only what makes a current statement false. Each candidate was read in the file before being classified.
+
+- **Run of `main` for 6947a06 (#135).** Run 41739896537: six jobs in success, `head_sha` equal to the merge commit, DAST 4m16s (outside the earlier range of 3m13s to 3m57s; the cause was not looked for).
+- **R-03 (#136, 3531d28).** The register had Treatment "Mitigate" and a Residual of High (15) re-scored on 2026-11-01, with controls (1) and (2) not applied. A dated note records the decision to accept the risk, with the reason and the condition for re-evaluation; Residual stays High (15). Revision history 1.16. Run 41872146459: six jobs in success, DAST 3m21s.
+- **Stale statements (#137, 90083c1).** Dated notes in four places: the README sentence saying the real addresses are not published (they are in the repository and documented intentionally, as the Security section already says); the container README sentence saying the container cannot modify its own filesystem (it runs without `--read-only`); the Containerfile comment about a read-only filesystem; the Ansible header saying the playbook takes a fresh VM to the same state (its tasks do not install Nginx and TLS, the backup script and units, `age`, the recipients file, the monitoring timers or log rotation; read from the task names and a search of the file, not from the task bodies).
+- **Restore and refresh tokens (#138, 0c1a105).** Restoring an older database restores the `refresh_tokens` table as it was, so a token used or revoked after the backup is accepted again until its expiry while the JWT secret is unchanged. Read in `backend/app/main.py`; not tested. The command that clears the table after a restore was not run.
+- **SBOM scope (#139, 7ae177f).** Podman reports the local image `0.3` as created on 2026-10-18 and the SBOM was generated the same day. The requirements were split on 2026-10-26 (61d6e45) and the Containerfile installs only `requirements.txt`, so a rebuilt image would differ; the SBOM still lists bandit, pip-audit, pytest and ruff. The image was not rebuilt and the SBOM was not regenerated or signed again. Run 41928249897: six jobs in success, DAST 3m34s.
+- **Dependabot and frontend (#140, 35795b7).** `.github/dependabot.yml` exists since 2026-10-28 (9838088) and covers `github-actions` only; the rows of `docs/control-mapping.md` that say the file does not exist describe the earlier state. The frontend has no test files and no test script. In `frontend/src/services/auth.js` any failure of the refresh request clears both tokens and ends the session, and nothing in `frontend/src` sends `limit` or `offset`. Read from the code; not exercised in a browser.
+
+### Not changed
+
+- "Backups are not encrypted" in the backup README and "Refresh token revocation is not implemented" in the README are followed by dated updates that give the current state.
+- The test counts in the README (19, 33 and 40) are dated; no count of 69 is stated there.
+- The README Phase 12 box "What I Learned section completed" is unchecked; the section exists and says it is written progressively.
+- The private addresses in the repository belong to the virtual networks of the lab; they stay in the files and in this journal.
+
+### Lessons
+
+- **A phrase split across two lines is not found by a search for the phrase.** The sentence about the container filesystem was not found by `grep -F` because it breaks after "itself cannot"; a search for `own filesystem` found it.
+- **A dated note must not be inserted inside another dated note.** The first draft of the control-mapping note landed in the middle of the 2026-10-24 update; the diff showed it and the edit was redone before the commit.
+- **"The file does not exist" is true on the day it was checked.** `.github/dependabot.yml` was absent on 2026-10-23 and 2026-10-24 and present from 2026-10-28; the rows were not updated.
+- **A stale artefact is not always a stale image.** The SBOM was generated after the image was created; what changed afterwards was the requirements and the Containerfile, and the creation date of the image decided the wording.
+- **An external summary needs the file behind it.** Of the candidates raised, several were already followed by a dated update, one was a paraphrase and several were accurate; the statement in the file decided each one.
+
+### Open items
+
+- Frontend: no automated tests; a refresh failure other than 401 ends the session; the interface does not paginate. None of this was exercised in a browser.
+- Dependabot version updates are not configured for pip or npm.
+- The SBOM and its signature were not regenerated after the split of the requirements; the date of the Trivy scan quoted in the README was not checked.
+- The clearing of `refresh_tokens` after a restore was not run.
+- The README Phase 12 box for the "What I Learned" section is unchecked.
+- The other open items of Sessions 29 and 30 are unchanged.
