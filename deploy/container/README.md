@@ -75,6 +75,8 @@ root. This means that a compromise of the application does not give
 root access inside the container, and the container itself cannot
 modify its own filesystem.
 
+Update 2026-11-04: the last sentence is wrong. The container is run without `--read-only` (see the update under the run command above), so it has a writable layer. Running as non-root does not make the filesystem read-only.
+
 ## Related
 
 - `docs/JOURNAL.md` session 24 — the record of the containerisation

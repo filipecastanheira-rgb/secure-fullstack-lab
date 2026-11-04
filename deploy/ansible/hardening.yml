@@ -5,6 +5,10 @@
 # in a form that is idempotent and reproducible. Running it against a
 # fresh Ubuntu VM takes the system to the same state as the current one.
 #
+# Update 2026-11-04: this overstates what the playbook does. Its tasks do not
+# install or configure Nginx and TLS, the backup script and its units, age,
+# the backup recipients file, or the monitoring timers and log rotation.
+#
 # Key principles:
 # - Every task is idempotent. Running the playbook twice produces no
 #   change on the second run.
