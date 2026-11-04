@@ -71,6 +71,21 @@ integrity check returned `ok` and the login endpoint returned 200. The
 private key is on the same machine, so the time to fetch a key from
 elsewhere is not part of this number.
 
+*Update 2026-11-04:* restoring a backup also restores the
+`refresh_tokens` table as it was when the backup was taken. A refresh
+token that was used or revoked after that moment (rotation, logout or
+the revocation of a family after a reuse) is again unused and not
+revoked in the restored table, so the API accepts it again until its
+7-day expiry, as long as the JWT secret that signed it is unchanged.
+Tokens issued after the backup have no row and are rejected. This was
+read in `backend/app/main.py`; it was not tested. To force a new login
+for every user after a restore, delete the rows of that table after
+the `chmod` and before the restart:
+
+    sudo -u secure-app sqlite3 /var/lib/secure-fullstack/lab.db 'DELETE FROM refresh_tokens;'
+
+This command was not run.
+
 ## How the backup works
 
 - **`sqlite3 .backup`** is used for the database, not `cp`. The
