@@ -284,6 +284,14 @@ rather than silently pending.
 - [x] **`correlation-check.sh` time window.** The Nginx log is now
   filtered to the last 5 minutes, so an alert stops firing once the
   burst is over (Session 25).
+- [ ] **Frontend: no automated tests; two behaviours not handled.** The
+  repository has no test files under `frontend/` and `package.json` has no
+  test script (checked 2026-11-04). Read from the code, not exercised in a
+  browser: any failure of the `/api/auth/refresh` request, including a
+  network error or a 5xx response, clears both tokens and sends the user to
+  the login page, although only a 401 means the session is over; and the
+  interface does not send `limit` or `offset` to the API, so assets beyond
+  the first page the API returns would not be shown. Not scheduled.
 
 ### Phase 9 — Configuration as code (complete)
 

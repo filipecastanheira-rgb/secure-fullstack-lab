@@ -419,6 +419,12 @@ the event of a significant incident, the entity must notify CNCS within
 24 hours (early warning) and 72 hours (formal notification). This is
 referenced for awareness only — the lab is not in scope of NIS2.
 
+**Update 2026-11-04.** `.github/dependabot.yml` was added on 2026-10-28 (`9838088`)
+and configures version updates for the `github-actions` ecosystem only. The rows above
+that say the file does not exist (the Dependabot row of section 2 and row (d) of section 5)
+and the A06 row of section 6 describe the state before that commit. Version updates are
+still not configured for pip or npm. The alerts and security updates are unchanged.
+
 ---
 
 ## 6. Consolidated view
@@ -536,3 +542,4 @@ mapping — to make the roadmap traceable to a requirement.
 | 2026-10-24 | 1.4     | Section 5: row (c) records that no 03:00 run of the backup timer was seen, with a fourth-pass note. Section 6: update note with the status of each area re-checked against code, tests, repository and VM; A02, A04 and A05 are `[partial]`; the 2026-10-05 table is kept unchanged. Section 7: banner states that the ISO references are historical. The SBOM row of A06 is not reconciled. | Filipe Castanheira |
 | 2026-10-25 | 1.5     | Section 5: row (h) records which TLS 1.2 suites the server accepted when tested from the VM on 2026-10-24. Section 2: the cipher-suites row and a new update note record the same observation. The A02 row of section 6 already recorded it and is unchanged. | Filipe Castanheira |
 | 2026-10-25 | 1.6     | Section 2: the SBOM row of A06 changed from `[planned: phase 11]` to `[partial]`, the status line corrected, and an update note added; the 2026-10-23 note is unchanged. Section 6: the A06 row no longer says the SBOM is not reconciled. | Filipe Castanheira |
+| 2026-11-04 | 1.7     | Section 5: update note recording that `.github/dependabot.yml` exists since 2026-10-28, for `github-actions` only. The rows that say it does not exist are kept. Original text kept. | Filipe Castanheira |
